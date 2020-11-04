@@ -1,0 +1,8 @@
+name: 2020-11-04-igseq-ramesh-alleles
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - snakemake
+  - biopython

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 """
 Simple GenBank accession downloader.
 """

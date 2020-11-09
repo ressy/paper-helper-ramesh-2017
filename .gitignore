@@ -1,1 +1,3 @@
 .snakemake
+converted/
+from-genbank/

@@ -10,18 +10,6 @@ FASTA = expand("from-genbank/{acc}.fasta", acc=ACCESSIONS)
 GBFFASTA = expand("converted/{acc}.gbf.fasta", acc=ACCESSIONS)
 GBFCSV = expand("converted/{acc}.gbf.csv", acc=ACCESSIONS)
 
-rule all_gbf_csv:
-    input: GBFCSV
-
-rule all_gbf_fasta:
-    input: GBFFASTA
-
-rule all_download_gbf:
-    input: GBF
-
-rule all_download_fasta:
-    input: FASTA
-
 rule convert_gbf_csv_combined:
     output: "converted/all.csv"
     input: GBFCSV
@@ -37,6 +25,18 @@ rule convert_gbf_csv_combined:
             writer = csv.DictWriter(f_out, fieldnames=rows[0].keys(), lineterminator="\n")
             writer.writeheader()
             writer.writerows(rows)
+
+rule all_gbf_csv:
+    input: GBFCSV
+
+rule all_gbf_fasta:
+    input: GBFFASTA
+
+rule all_download_gbf:
+    input: GBF
+
+rule all_download_fasta:
+    input: FASTA
 
 rule convert_gbf_csv:
     output: "converted/{acc}.gbf.csv"

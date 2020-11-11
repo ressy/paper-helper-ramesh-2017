@@ -21,6 +21,7 @@ def get_gbf_attrs(gbf):
     attrs.update(gbf.annotations)
     del attrs["structured_comment"]
     del attrs["references"]
+    attrs["seqlen"] = len(gbf.seq)
     attrs["dbxrefs"] = gbf.dbxrefs
     attrs["description"] = gbf.description
     attrs["id"] = gbf.id
@@ -65,10 +66,16 @@ def convert_gbf(fp_in, fp_out, fmt):
             gbf_pairs = get_gbf_attrs(gbf)
             gbf_pairs = {"gbf_" + key: val for key, val in gbf_pairs.items()}
             gbf_desc = encode_seq_desc(gbf_pairs)
+            feature_src_attrs = {}
             for feature in gbf.features:
                 feature_pairs = get_feature_attrs(feature, gbf)
                 feature_pairs = {"feature_" + key: val for key, val in feature_pairs.items()}
+                # the source feature is special.  stash those attributes and
+                # use as defaults for the other features.
+                if feature.type == "source":
+                    feature_src_attrs = feature_pairs.copy()
                 row = feature_pairs.copy()
+                row.update(feature_src_attrs)
                 row.update(gbf_pairs)
                 rows.append(row)
     if fmt == "fasta":

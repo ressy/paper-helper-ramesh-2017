@@ -20,8 +20,8 @@ parse_genbank_genes <- function(genbank) {
   genes <- subset(
     genbank,
     feature_type == "gene",
-    select = c(feature_qualifier_gene, gbf_id, gbf_description, feature_seq))
-  colnames(genes) <- c("AlleleOrig", "Accession", "AccessionDescription", "Seq")
+    select = c(feature_qualifier_gene, gbf_id, gbf_description, gbf_seqlen, feature_seq))
+  colnames(genes) <- c("AlleleOrig", "Accession", "AccessionDescription", "GBFLen", "Seq")
   # Split out the ontological stuff
   genes <- cbind(genes, parse_groupings(genes$Allele))
   # Also parse out details from the accession descriptions
@@ -58,3 +58,7 @@ segments <- c(paste0("IGH", c("V", "D", "J")), "IGLV", "IGLJ", "IGKV", "IGKJ")
 table(subset(genbank_alleles, Segment %in% segments)$Segment)[segments]
 table(subset(genbank_alleles, Segment %in% segments & ! Partial)$Segment)[segments]
 table(subset(sonar_alleles, Segment %in% segments)$Segment)[segments]
+
+
+scaffolds <- read.csv("from-paper/scaffolds.csv", stringsAsFactors = FALSE)
+genbank_alleles$Scaffold <- scaffolds$Scaffold[match(genbank_alleles$GBFLen, scaffolds$Length)]

@@ -10,7 +10,14 @@ FASTA = expand("from-genbank/{acc}.fasta", acc=ACCESSIONS)
 GBFFASTA = expand("converted/{acc}.gbf.fasta", acc=ACCESSIONS)
 GBFCSV = expand("converted/{acc}.gbf.csv", acc=ACCESSIONS)
 
+SHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQC9Yh2l3ktopxK0idgGlSaOeo2Chnq15EoVro3wsmKHowVP1uVydyVJ_asCQe9Sfwot7_PcTNzaKGa/pub"
+SHEETS_GIDS = {
+    "genes": "0",
+    "scaffolds": "245027692"
+    }
+
 rule convert_gbf_csv_combined:
+    """Merge the per-accession CSV files with per-feature rows into one CSV."""
     output: "converted/all.csv"
     input: GBFCSV
     run:
@@ -38,20 +45,48 @@ rule all_download_gbf:
 rule all_download_fasta:
     input: FASTA
 
+rule all_sheets:
+    input: expand("from-paper/{sheet}.csv", sheet=["genes", "scaffolds"])
+
 rule convert_gbf_csv:
+    """Convert a GBF file into a CSV with one row per feature."""
     output: "converted/{acc}.gbf.csv"
     input: "from-genbank/{acc}.gbf"
     shell: "python convert_gbf.py {input} {output} csv"
 
 rule convert_gbf_fasta:
+    """Convert a GBF file into a FASTA with one sequence per feature."""
     output: "converted/{acc}.gbf.fasta"
     input: "from-genbank/{acc}.gbf"
     shell: "python convert_gbf.py {input} /dev/stdout fasta | seqtk seq -l 0 > {output}"
 
 rule download_gbf:
+    """Download one GBF text file per GenBank accession.
+
+    We can then convert the GBF into other formats like individual feature
+    sequences in FASTA.
+    """
     output: "from-genbank/{acc}.gbf"
     shell: "python download_genbank.py {wildcards.acc} gb > {output}"
 
 rule download_fasta:
+    """Download one FASTA per GenBank accession.
+
+    Not actively using this since what I really want is to slice up each
+    accession into one sequence per feature, to get at the individual
+    genes/alleles.
+    """
     output: "from-genbank/{acc}.fasta"
     shell: "python download_genbank.py {wildcards.acc} fasta > {output}"
+
+rule download_sheet:
+    output: "from-paper/{sheet}.csv"
+    params:
+        url=SHEETS_URL,
+        gid=lambda w: SHEETS_GIDS[w.sheet]
+    shell:
+        """
+            curl -L '{params.url}?gid={params.gid}&single=true&output=csv' > {output}
+            dos2unix {output}
+            echo >> {output}
+        """

@@ -2,7 +2,7 @@
 wildcard_constraints:
     acc="[A-Z]{2}[0-9]+"
 
-with open("accessions.txt") as f_in:
+with open("from-paper/accessions.txt") as f_in:
     ACCESSIONS = [line.strip() for line in f_in]
 
 GBF = expand("from-genbank/{acc}.gbf", acc=ACCESSIONS)

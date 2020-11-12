@@ -31,6 +31,11 @@ parse_genbank_genes <- function(genbank) {
   colnames(genes) <- c("AlleleOrig", "Accession", "AccessionDescription", "GBFLen", "Seq")
   # Split out the ontological stuff
   genes <- cbind(genes, parse_groupings(genes$Allele))
+  if (all(genes$AlleleOrig == genes$Allele)) {
+    genes <- subset(genes, select = -c(AlleleOrig))
+  } else {
+    stop("unexpected allele name")
+  }
   # Also parse out details from the accession descriptions
   genes$AccessionDescriptionPartial <- grepl("partial (cds|sequence)", genes$AccessionDescription)
   genes$AccessionDescriptionFunctional <- NA

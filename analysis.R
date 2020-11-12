@@ -59,6 +59,94 @@ table(subset(genbank_alleles, Segment %in% segments)$Segment)[segments]
 table(subset(genbank_alleles, Segment %in% segments & ! Partial)$Segment)[segments]
 table(subset(sonar_alleles, Segment %in% segments)$Segment)[segments]
 
+sheets <- c(paste0("fig", 1:6), paste0("suppsheet", 1:3))
+names(sheets) <- sheets
+paper <- lapply(sheets, function(thing) {
+  read.csv(
+    file.path("from-paper", paste0(thing, ".csv")),
+    stringsAsFactors = FALSE)
+})
 
-scaffolds <- read.csv("from-paper/scaffolds.csv", stringsAsFactors = FALSE)
-genbank_alleles$Scaffold <- scaffolds$Scaffold[match(genbank_alleles$GBFLen, scaffolds$Length)]
+parse_genes <- function(paper) {
+  # paper$fig1$Locus <- "IGH"
+  # paper$fig2$Locus <- "IGK"
+  # paper$fig3$Locus <- "IGL"
+  paper$fig1$Gene <- paste0("IGHV", paper$fig1$Gene)
+  paper$fig2$Gene <- paste0("IGKV", paper$fig2$Gene)
+  paper$fig3$Gene <- paste0("IGLV", paper$fig3$Gene)
+  result <- do.call(
+    rbind, lapply(paper[c("fig1", "fig2", "fig3")], function(sheet) {
+    if (! "LocusGroup" %in% colnames(sheet)) {
+      sheet$LocusGroup <- as.character(NA)
+    }
+    sheet[, c("Gene", "Category", "LocusGroup")]
+  }))
+  colnames(result)[1] <- "GeneOrig"
+  result <- cbind(result, parse_groupings(result$GeneOrig))
+  result <- result[
+    , -match(c("GeneOrig", "Allele", "Prefix", "Suffix"), colnames(result))]
+  rownames(result) <- NULL
+  result
+}
+
+parse_alleles <- function(paper) {
+  # paper$fig4$Allele <- paste0("IGHV", paper$fig4$Allele)
+  # paper$fig5$Allele <- paste0("IGKV", paper$fig5$Allele)
+  # paper$fig6$Allele <- paste0("IGLV", paper$fig6$Allele)
+  result <- do.call(
+    rbind, lapply(paper[c("fig4", "fig5", "fig6")], function(sheet) {
+      sheet$Category <- "Functional"
+      if (! "LocusGroup" %in% colnames(sheet)) {
+        sheet$LocusGroup <- as.character(NA)
+      }
+      sheet[, c("Allele", "Category")]
+    }))
+  colnames(result)[1] <- "AlleleOrig"
+  result <- cbind(result, parse_groupings(result$AlleleOrig))
+  result <- result[
+    , -match(c("AlleleOrig", "Prefix", "Suffix"), colnames(result))]
+  rownames(result) <- NULL
+  result
+}
+
+parse_scaffolds <- function(paper) {
+  paper$suppsheet1$Locus <- "IGH"
+  paper$suppsheet2$Locus <- "IGK"
+  paper$suppsheet3$Locus <- "IGL"
+  result <- with(paper, rbind(suppsheet1, suppsheet2, suppsheet3))
+  result
+}
+
+metadata <- list(
+  genes = parse_genes(paper),
+  alleles = parse_alleles(paper),
+  scaffolds = parse_scaffolds(paper)
+)
+
+idx <- match(genbank_alleles$GBFLen, metadata$scaffolds$Length)
+genbank_alleles$Scaffold <- metadata$scaffolds$Scaffold[idx]
+genbank_alleles$ScaffoldGroup <- metadata$scaffolds$LocusGroup[idx]
+idx <- match(genbank_alleles$Gene, with(metadata$genes, paste0(Locus, "V", Gene)))
+genbank_alleles$Category <- metadata$genes$Category[idx]
+
+groups <- c(
+  "F known" = "Functional main",
+  "F sister" = "Functional sister",
+  "F unknown" = "Functional NA",
+  "NF known" = "Non-functional main",
+  "ORF known" = "ORF main",
+  "ORF unknown" = "ORF NA",
+  "other known" = "NA main",
+  "other sister" = "NA sister",
+  "other unknown" = "NA unknown",
+  "other" = "NA NA")
+genbank_alleles$Group <- factor(
+  with(genbank_alleles, paste(Category, ScaffoldGroup)),
+  levels = unname(groups),
+  labels = names(groups))
+
+tables <- list()
+tables$S1A <- with(subset(genbank_alleles, ! Partial & Segment == "IGHV"), table(Family, droplevels(Group)))
+tables$S1B <- with(subset(genbank_alleles, ! Partial & Segment == "IGHD"), table(Family))
+tables$S1C <- with(subset(genbank_alleles, ! Partial & Segment == "IGKV"), table(Family, droplevels(Group)))
+

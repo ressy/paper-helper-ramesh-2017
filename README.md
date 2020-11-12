@@ -14,3 +14,6 @@ the allele names and description text.  When filtering to just complete
 sequences (Partial == FALSE) the numbers match what's in the paper, but still
 not what's in SONAR's copy.  It doesn't look like a straightforward pattern to
 me, like sequences missing from the multi-gene accessions for example.
+
+Aha, Chaim says SONAR has an early copy of the Ramesh set, from before
+publication and GenBank submission.  That explains it.

@@ -22,6 +22,15 @@ SHEETS_GIDS = {
     "suppsheet2": "1621508193",
     "suppsheet3": "664446886"
     }
+SHEETS = expand("from-paper/{sheet}.csv", sheet=SHEETS_GIDS.keys())
+
+
+rule merge_everything:
+    output: "output/alleles.csv"
+    input:
+        from_gb="converted/all.csv",
+        from_paper=SHEETS
+    shell: "Rscript merge_everything.R"
 
 rule convert_gbf_csv_combined:
     """Merge the per-accession CSV files with per-feature rows into one CSV."""
@@ -53,7 +62,7 @@ rule all_download_fasta:
     input: FASTA
 
 rule all_sheets:
-    input: expand("from-paper/{sheet}.csv", sheet=SHEETS_GIDS.keys())
+    input: SHEETS
 
 rule convert_gbf_csv:
     """Convert a GBF file into a CSV with one row per feature."""

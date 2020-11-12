@@ -12,15 +12,15 @@ GBFCSV = expand("converted/{acc}.gbf.csv", acc=ACCESSIONS)
 
 SHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQC9Yh2l3ktopxK0idgGlSaOeo2Chnq15EoVro3wsmKHowVP1uVydyVJ_asCQe9Sfwot7_PcTNzaKGa/pub"
 SHEETS_GIDS = {
-    "genes": "0",
     "fig1": "1857954478",
     "fig2": "380706608",
     "fig3": "1042301659",
     "fig4": "1508567143",
     "fig5": "782424017",
     "fig6": "1329373153",
-    "alleles": "90975834",
-    "scaffolds": "245027692"
+    "suppsheet1": "974273021",
+    "suppsheet2": "1621508193",
+    "suppsheet3": "664446886"
     }
 
 rule convert_gbf_csv_combined:

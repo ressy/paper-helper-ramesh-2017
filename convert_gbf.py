@@ -65,7 +65,6 @@ def convert_gbf(fp_in, fp_out, fmt):
         for gbf in SeqIO.parse(f_in, "gb"):
             gbf_pairs = get_gbf_attrs(gbf)
             gbf_pairs = {"gbf_" + key: val for key, val in gbf_pairs.items()}
-            gbf_desc = encode_seq_desc(gbf_pairs)
             feature_src_attrs = {}
             for feature in gbf.features:
                 feature_pairs = get_feature_attrs(feature, gbf)
@@ -73,18 +72,20 @@ def convert_gbf(fp_in, fp_out, fmt):
                 # the source feature is special.  stash those attributes and
                 # use as defaults for the other features.
                 if feature.type == "source":
-                    feature_src_attrs = feature_pairs.copy()
-                row = feature_pairs.copy()
-                row.update(feature_src_attrs)
-                row.update(gbf_pairs)
-                rows.append(row)
+                    del feature_pairs["feature_seq"]
+                    del feature_pairs["feature_type"]
+                    feature_src_attrs = {k.replace("feature", "feature_source"): v for k, v in feature_pairs.items()}
+                else:
+                    row = feature_src_attrs.copy()
+                    row.update(feature_pairs)
+                    row.update(gbf_pairs)
+                    rows.append(row)
     if fmt == "fasta":
         with open(fp_out, "wt") as f_out:
             for row in rows:
-                seq = row["seq"]
-                del row["seq"]
+                seq = row["feature_seq"]
+                del row["feature_seq"]
                 desc = encode_seq_desc(row)
-                seq = feature.extract(gbf.seq)
                 seqid = make_seqid_by_gene(rows)
                 record = SeqRecord(
                     seq=seq, id=seqid, description=desc)

@@ -1,5 +1,16 @@
 parse_groupings <- function(txt) {
   result <- data.frame(
+    Allele = txt,
+    stringsAsFactors = FALSE)
+  result$Gene <- sub("\\*.*$", "", result$Allele)
+  result$Family <- sub("-.*$", "", result$Gene)
+  result$Segment <- sub("^(IG[HLK].).*$", "\\1", result$Family)
+  result$Locus <- substr(result$Gene, 1, 3)
+  result
+}
+
+parse_groupings_sonar <- function(txt) {
+  result <- data.frame(
     Prefix = sub("_?IG.*", "", txt),
     Suffix = sub(
       "(.*IG[HKL]V[0-9]+-[^-]+-?|.*IG.[^V].*)", "", sub("\\*.*", "", txt)),
@@ -70,7 +81,7 @@ parse_genes <- function(paper) {
   colnames(part1)[1] <- "GeneOrig"
   part1 <- cbind(part1, parse_groupings(part1$GeneOrig))
   part1 <- part1[
-    , -match(c("GeneOrig", "Allele", "Prefix", "Suffix"), colnames(part1))]
+    , -match(c("GeneOrig", "Allele"), colnames(part1))]
   
   part2 <- do.call(
     rbind, lapply(paper[c("fig4", "fig5", "fig6")], function(sheet) {
@@ -83,7 +94,7 @@ parse_genes <- function(paper) {
   colnames(part2)[1] <- "AlleleOrig"
   part2 <- cbind(part2, parse_groupings(part2$AlleleOrig))
   part2 <- part2[
-    , -match(c("Allele", "AlleleOrig", "Prefix", "Suffix"), colnames(part2))]
+    , -match(c("Allele", "AlleleOrig"), colnames(part2))]
   part2$LocusGroup <- as.character(NA)
   result <- rbind(part1, subset(part2, ! Gene %in% part1$Gene))
   rownames(result) <- NULL

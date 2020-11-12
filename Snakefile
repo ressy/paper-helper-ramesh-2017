@@ -30,7 +30,7 @@ rule merge_everything:
     input:
         from_gb="converted/all.csv",
         from_paper=SHEETS
-    shell: "Rscript merge_everything.R"
+    shell: "Rscript scripts/merge_everything.R"
 
 rule convert_gbf_csv_combined:
     """Merge the per-accession CSV files with per-feature rows into one CSV."""
@@ -68,13 +68,13 @@ rule convert_gbf_csv:
     """Convert a GBF file into a CSV with one row per feature."""
     output: "converted/{acc}.gbf.csv"
     input: "from-genbank/{acc}.gbf"
-    shell: "python convert_gbf.py {input} {output} csv"
+    shell: "python scripts/convert_gbf.py {input} {output} csv"
 
 rule convert_gbf_fasta:
     """Convert a GBF file into a FASTA with one sequence per feature."""
     output: "converted/{acc}.gbf.fasta"
     input: "from-genbank/{acc}.gbf"
-    shell: "python convert_gbf.py {input} /dev/stdout fasta | seqtk seq -l 0 > {output}"
+    shell: "python scripts/convert_gbf.py {input} /dev/stdout fasta | seqtk seq -l 0 > {output}"
 
 rule download_gbf:
     """Download one GBF text file per GenBank accession.
@@ -83,7 +83,7 @@ rule download_gbf:
     sequences in FASTA.
     """
     output: "from-genbank/{acc}.gbf"
-    shell: "python download_genbank.py {wildcards.acc} gb > {output}"
+    shell: "python scripts/download_genbank.py {wildcards.acc} gb > {output}"
 
 rule download_fasta:
     """Download one FASTA per GenBank accession.
@@ -93,7 +93,7 @@ rule download_fasta:
     genes/alleles.
     """
     output: "from-genbank/{acc}.fasta"
-    shell: "python download_genbank.py {wildcards.acc} fasta > {output}"
+    shell: "python scripts/download_genbank.py {wildcards.acc} fasta > {output}"
 
 rule download_sheet:
     output: "from-paper/{sheet}.csv"

@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-source("analysis.R")
+source("scripts/analysis.R")
 genbank <- read.csv("converted/all.csv", stringsAsFactors = FALSE)
 genbank_alleles <- parse_genbank_genes(genbank)
 paper <- load_paper()

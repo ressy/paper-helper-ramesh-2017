@@ -1,4 +1,4 @@
-name: 2020-11-04-igseq-ramesh-alleles
+name: paper-helper-ramesh-2017
 channels:
   - bioconda
   - conda-forge

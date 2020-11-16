@@ -1,19 +1,12 @@
-# Ramesh paper's antibody alleles versus SONAR's copy
+# Data Gathering from Ramesh 2017
 
-Where is `IGHV2-ABO*01` in SONAR's germDB files?  Ryan found that that was a
-close match for RM6561's DH1021 lineage, but it's not in the IgDiscover results
-and in turn is not in the initial Ramesh database supplied by SONAR even though
-it's visible in GenBank.  The Ramesh paper:
+Scripts to merge GenBank-deposited antibody sequences and annotations with
+paper-supplied information (see below) into a single CSV table and FASTA, for
+as many alleles as possible. See [output/alleles.csv](output/alleles.csv) and
+[output/alleles.fasta](output/alleles.fasta) for final output (all else here is
+an implementation detail).  **NB: The CSV file is still misssing some
+information, and shows small inconsistencies compared to the paper I couldn't
+resolve here.**  I'll make updates here, if I find any, to resolve these
+issues.
 
-<https://www.frontiersin.org/articles/10.3389/fimmu.2017.01407/full>
-
-The Snakemake rules download GBF files for MF989451 to MF989952 and extract
-individual sequences and metadata for each feature, all funneling to
-`converted/all.csv`.  The `analysis.R` file parses out individual columns from
-the allele names and description text.  When filtering to just complete
-sequences (Partial == FALSE) the numbers match what's in the paper, but still
-not what's in SONAR's copy.  It doesn't look like a straightforward pattern to
-me, like sequences missing from the multi-gene accessions for example.
-
-Aha, Chaim says SONAR has an early copy of the Ramesh set, from before
-publication and GenBank submission.  That explains it.
+Ramesh A, Darko S, Hua A, Overman G, Ransier A, Francica JR, Trama A, Tomaras GD, Haynes BF, Douek DC and Kepler TB (2017) Structure and Diversity of the Rhesus Macaque Immunoglobulin Loci through Multiple De Novo Genome Assemblies. Front. Immunol. 8:1407. doi: [10.3389/fimmu.2017.01407](https://doi.org/10.3389/fimmu.2017.01407)

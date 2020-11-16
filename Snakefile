@@ -24,6 +24,10 @@ SHEETS_GIDS = {
     }
 SHEETS = expand("from-paper/{sheet}.csv", sheet=SHEETS_GIDS.keys())
 
+rule alleles_fasta:
+    output: "output/alleles.fasta"
+    input: "output/alleles.csv"
+    shell: "python scripts/csv_to_fasta.py {input} {output} Allele Seq"
 
 rule merge_everything:
     output: "output/alleles.csv"

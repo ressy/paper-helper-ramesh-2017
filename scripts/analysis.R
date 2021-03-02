@@ -24,11 +24,36 @@ parse_groupings_sonar <- function(txt) {
 }
 
 parse_genbank_genes <- function(genbank) {
-  genes <- subset(
-    genbank,
-    feature_type == "gene",
-    select = c(feature_qualifier_gene, gbf_id, gbf_description, gbf_seqlen, feature_seq))
-  colnames(genes) <- c("AlleleOrig", "Accession", "AccessionDescription", "GBFLen", "Seq")
+  # Looks like these are all gaps.  Drop them first.
+  genbank <- subset(genbank, feature_qualifier_gene != "")
+
+  # There are one or more rows associated with any particular gene, including
+  # the genomic sequence, maybe CDS, maybe RSS, etc.  We'll collapse it down to
+  # exactly one row per allele.
+  genes <- do.call(rbind, lapply(split(genbank, genbank$feature_qualifier_gene), function(chunk) {
+    # At this point every chunk should have a row for feature_type "gene" we'll
+    # start with
+    chunk_out <- subset(
+      chunk,
+      feature_type == "gene",
+      select = c(feature_qualifier_gene, gbf_id, gbf_description, gbf_seqlen, feature_seq))
+    colnames(chunk_out) <- c("AlleleOrig", "Accession", "AccessionDescription", "GBFLen", "SeqGenomic")
+    # Add separate sequence columns for CDS and translation, if present.
+    cds <- subset(chunk, feature_type == "CDS")
+    if (nrow(cds) == 0) {
+      seq_cds <- ""
+      seq_aa <- ""
+    } else if (nrow(cds) == 1) {
+      seq_cds <- cds$feature_seq
+      seq_aa <- cds$feature_qualifier_translation
+    } else {
+      stop("multiple CDSs?")
+    }
+    chunk_out$SeqCDS <- seq_cds
+    chunk_out$SeqAA <- seq_aa
+    chunk_out
+  }))
+
   # Split out the ontological stuff
   genes <- cbind(genes, parse_groupings(genes$Allele))
   if (all(genes$AlleleOrig == genes$Allele)) {

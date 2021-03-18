@@ -59,7 +59,7 @@ def make_seqid_by_gene(attrs, tally={"seq": 0}):
         tally["seq"] += 1
     return seqid
 
-def convert_gbf(fp_in, fp_out, fmt):
+def read_gbf_as_table(fp_in):
     rows = []
     with open(fp_in) as f_in:
         for gbf in SeqIO.parse(f_in, "gb"):
@@ -80,6 +80,11 @@ def convert_gbf(fp_in, fp_out, fmt):
                     row.update(feature_pairs)
                     row.update(gbf_pairs)
                     rows.append(row)
+    return rows
+
+
+def convert_gbf(fp_in, fp_out, fmt):
+    rows = read_gbf_as_table(fp_in)
     if fmt == "fasta":
         with open(fp_out, "wt") as f_out:
             for row in rows:

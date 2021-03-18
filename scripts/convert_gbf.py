@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
-Convert GBF features to FASTA.
+Convert GBF features to FASTA or CSV.
 
 Note that this is not the same as just using the SeqRecord provided by SeqIO's
 GenBank parser.  That produces one big sequence for the whole record.  Instead
-this writes each feature as a separate FASTA entry.
+this writes each feature as a separate FASTA entry or CSV row.
 """
 
 import sys

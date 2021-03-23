@@ -43,14 +43,17 @@ parse_genbank_genes <- function(genbank) {
     if (nrow(cds) == 0) {
       seq_cds <- ""
       seq_aa <- ""
+      product <- ""
     } else if (nrow(cds) == 1) {
       seq_cds <- cds$feature_seq
       seq_aa <- cds$feature_qualifier_translation
+      product <- cds$feature_qualifier_product
     } else {
       stop("multiple CDSs?")
     }
     chunk_out$SeqCDS <- seq_cds
     chunk_out$SeqAA <- seq_aa
+    chunk_out$Product <- product
     chunk_out
   }))
 

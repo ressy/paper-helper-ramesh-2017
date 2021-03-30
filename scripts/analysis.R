@@ -72,6 +72,30 @@ parse_fields_from_allele <- function(txt, prefix="Allele") {
   fields
 }
 
+patch_genbank_entries <- function(genbank) {
+  # MF989453.1: kappa versus lambda
+  idx <- which(with(genbank, Accession == "MF989453.1" & AlleleOrig == "IGLV2-ABX*01"))
+  if (length(idx) == 1) {
+    genbank$Product[idx] <- gsub(
+      "^immunoglobulin kappa chain variable region$",
+      "immunoglobulin lambda chain variable region",
+      genbank$Product[idx])
+  } else if (length(idx) > 1) {
+    stop("More than one IGLV2-ABX*01?")
+  }
+  # MF989451.1: delta versus mu
+  idx <- which(with(genbank, Accession == "MF989451.1" & AlleleOrig == "IGHM*01"))
+  if (length(idx) == 1) {
+    genbank$Product[idx] <- gsub(
+      "^immunoglobulin heavy chain delta constant region$",
+      "immunoglobulin heavy chain mu constant region",
+      genbank$Product[idx])
+  } else if (length(idx) > 1) {
+    stop("More than one IGHM*01?")
+  }
+  genbank
+}
+
 parse_genbank_entries <- function(genbank) {
   # Looks like these are all gaps.  Drop them first.
   genbank <- subset(genbank, feature_qualifier_gene != "")
@@ -105,6 +129,9 @@ parse_genbank_entries <- function(genbank) {
     chunk_out$Product <- product
     chunk_out
   }))
+
+  # Apply fixes before trying to parse more details
+  genes <- patch_genbank_entries(genes)
 
   # Split out the ontological stuff
   genes <- cbind(

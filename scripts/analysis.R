@@ -1,29 +1,78 @@
-parse_groupings <- function(txt) {
-  result <- data.frame(
+# Parse antibody attributes from the Product column text.
+parse_fields_from_product <- function(txt) {
+  # yes some of the GenBank records do have "lamba" in them.  I'm in no position
+  # to criticize considering how often I write "lamda".
+  match <- regexec(
+    "^immunoglobulin (heavy|lambda|lamba|kappa)(?: chain)? ?(alpha|delta|epsilon|gamma|mu)?(.*)(domain|region) ?([0-9]*)$",
+    txt)
+  fields <- do.call(rbind, lapply(regmatches(txt, match), `[`, 2:6))
+  fields[is.na(fields)] <- ""
+  # the apply function has no drop=F apparently.
+  for (idx in 1:ncol(fields)) {
+    fields[, idx] <- gsub(" *$", "", gsub("^ *", "", fields[, idx]))
+  }
+  fields <- as.data.frame(fields, stringsAsFactors = FALSE)
+  colnames(fields) <- c(
+    "Locus", "Class", "region_segment", "region_domain", "Subclass")
+  fields$Locus <- c(heavy="IGH", kappa="IGK", lambda="IGL")[fields$Locus]
+  fields$Locus[is.na(fields$Locus)] <- ""
+  fields$Class[fields$Class == "lamba"] <- "lambda"
+  fields$Region <- ifelse(
+    fields$region_segment %in% c("variable", "diversity", "joining", "constant"),
+    fields$region_segment,
+    ifelse(fields$region_domain == "domain", "constant", ""))
+  fields$Domain <- ifelse(
+    fields$region_domain == "domain", fields$region_segment, "")
+  fields <- subset(fields, select = -c(region_domain, region_segment))
+  colnames(fields) <- paste0("Product", colnames(fields))
+  fields
+}
+
+# Parse antibody attributes from the AccessionDescription column text.
+parse_fields_from_accession_description <- function(txt) {
+  match <- regexec(
+    "^Macaca mulatta nonfunctional immunoglobulin (heavy|lambda|kappa) chain (alpha|delta|epsilon|gamma|mu)? ?(.*) (domain|region) ?([0-9]*)",
+    txt)
+  fields <- do.call(rbind, lapply(regmatches(txt, match), `[`, 2:6))
+  fields[is.na(fields)] <- ""
+  fields <- as.data.frame(fields, stringsAsFactors = FALSE)
+  colnames(fields) <- c(
+    "Locus", "Class", "region_segment", "region_domain", "Subclass")
+  fields$Locus <- c(heavy="IGH", kappa="IGK", lambda="IGL")[fields$Locus]
+  fields$Locus[is.na(fields$Locus)] <- ""
+  fields$Region <- ifelse(
+    fields$region_segment %in% c("variable", "diversity", "joining", "constant"),
+    fields$region_segment,
+    ifelse(fields$region_domain == "domain", "constant", ""))
+  fields$Domain <- ifelse(
+    fields$region_domain == "domain", fields$region_segment, "")
+  fields <- subset(fields, select = -c(region_domain, region_segment))
+  colnames(fields) <- paste0("AccessionDescription", colnames(fields))
+  fields
+}
+
+# Parse antibody attributes from the Allele column text.
+parse_fields_from_allele <- function(txt, prefix="Allele") {
+  fields <- data.frame(
     Allele = txt,
     stringsAsFactors = FALSE)
-  result$Gene <- sub("\\*.*$", "", result$Allele)
-  result$Family <- sub("-.*$", "", result$Gene)
-  result$Segment <- sub("^(IG[HLK].).*$", "\\1", result$Family)
-  result$Locus <- substr(result$Gene, 1, 3)
-  result
+  fields$Gene <- sub("\\*.*$", "", fields$Allele)
+  fields$Family <- sub("-.*$", "", fields$Gene)
+  fields$Segment <- sub("^(IG[HLK].).*$", "\\1", fields$Family)
+  fields$Locus <- substr(fields$Gene, 1, 3)
+  class_gene_lut <- c(IGHA="alpha", IGHD="delta", IGHE="epsilon", IGHG="gamma", IGHM="mu")
+  subclass_gene_lut <- c(IGHG1=1, IGHG2=2, IGHG3=3, IGHG4=4)
+  fields$Class <- class_gene_lut[fields$Gene]
+  fields$Class[is.na(fields$Class)] <- ""
+  fields$Subclass <- subclass_gene_lut[fields$Gene]
+  fields$Subclass[is.na(fields$Subclass)] <- ""
+  fields$Domain <- gsub("^[^_]*_?", "", fields$Allele)
+  colnames(fields) <- paste0(prefix, colnames(fields))
+  colnames(fields)[1] <- "Allele"
+  fields
 }
 
-parse_groupings_sonar <- function(txt) {
-  result <- data.frame(
-    Prefix = sub("_?IG.*", "", txt),
-    Suffix = sub(
-      "(.*IG[HKL]V[0-9]+-[^-]+-?|.*IG.[^V].*)", "", sub("\\*.*", "", txt)),
-    Allele = sub("(?:[^_]*_)", "", sub("(.*IG.[V].*)-.\\*", "\\1*", txt)),
-    stringsAsFactors = FALSE)
-  result$Gene <- sub("\\*.*$", "", result$Allele)
-  result$Family <- sub("-.*$", "", result$Gene)
-  result$Segment <- sub("^(IG[HLK].).*$", "\\1", result$Family)
-  result$Locus <- substr(result$Gene, 1, 3)
-  result
-}
-
-parse_genbank_genes <- function(genbank) {
+parse_genbank_entries <- function(genbank) {
   # Looks like these are all gaps.  Drop them first.
   genbank <- subset(genbank, feature_qualifier_gene != "")
 
@@ -58,7 +107,11 @@ parse_genbank_genes <- function(genbank) {
   }))
 
   # Split out the ontological stuff
-  genes <- cbind(genes, parse_groupings(genes$Allele))
+  genes <- cbind(
+    genes,
+    parse_fields_from_allele(genes$Allele),
+    parse_fields_from_accession_description(genes$AccessionDescription),
+    parse_fields_from_product(genes$Product))
   if (all(genes$AlleleOrig == genes$Allele)) {
     genes <- subset(genes, select = -c(AlleleOrig))
   } else {
@@ -74,6 +127,8 @@ parse_genbank_genes <- function(genbank) {
     genes$AccessionDescriptionPartial,
     levels = c(FALSE, TRUE),
     labels = c("WGS", "Targeted"))
+  # Apply an initial ordering
+  genes <- genes[with(genes, order(Accession, Allele)), ]
   genes
 }
 
@@ -85,22 +140,22 @@ load_sonar_alleles <- function() {
         "SONAR/germDB", pattern="Ig(HD|HKL[VDJ])_BU_DD\\.fasta$",
         full.names = TRUE), dnar::read.fa))
   colnames(sonar_alleles) <- c("AlleleOrig", "Seq")
-  sonar_alleles <- cbind(sonar_alleles, parse_groupings(sonar_alleles$AlleleOrig))
+  sonar_alleles <- cbind(sonar_alleles, parse_fields_from_allele(sonar_alleles$AlleleOrig))
   sonar_alleles
 }
 
-load_paper <- function() {
+load_paper <- function(dirpath) {
   sheets <- c(paste0("fig", 1:6), paste0("suppsheet", 1:3))
   names(sheets) <- sheets
   paper <- lapply(sheets, function(thing) {
     read.csv(
-      file.path("from-paper", paste0(thing, ".csv")),
+      file.path(dirpath, paste0(thing, ".csv")),
       stringsAsFactors = FALSE)
   })
   paper
 }
 
-parse_genes <- function(paper) {
+parse_paper_genes <- function(paper) {
   paper$fig1$Gene <- paste0("IGHV", paper$fig1$Gene)
   paper$fig2$Gene <- paste0("IGKV", paper$fig2$Gene)
   paper$fig3$Gene <- paste0("IGLV", paper$fig3$Gene)
@@ -112,7 +167,7 @@ parse_genes <- function(paper) {
     sheet[, c("Gene", "Category", "LocusGroup")]
   }))
   colnames(part1)[1] <- "GeneOrig"
-  part1 <- cbind(part1, parse_groupings(part1$GeneOrig))
+  part1 <- cbind(part1, parse_fields_from_allele(part1$GeneOrig, ""))
   part1 <- part1[
     , -match(c("GeneOrig", "Allele"), colnames(part1))]
   
@@ -125,7 +180,7 @@ parse_genes <- function(paper) {
       sheet[, c("Allele", "Category")]
     }))
   colnames(part2)[1] <- "AlleleOrig"
-  part2 <- cbind(part2, parse_groupings(part2$AlleleOrig))
+  part2 <- cbind(part2, parse_fields_from_allele(part2$AlleleOrig, ""))
   part2 <- part2[
     , -match(c("Allele", "AlleleOrig"), colnames(part2))]
   part2$LocusGroup <- as.character(NA)
@@ -134,7 +189,7 @@ parse_genes <- function(paper) {
   result
 }
 
-parse_scaffolds <- function(paper) {
+parse_paper_scaffolds <- function(paper) {
   paper$suppsheet1$Locus <- "IGH"
   paper$suppsheet2$Locus <- "IGK"
   paper$suppsheet3$Locus <- "IGL"
@@ -142,12 +197,49 @@ parse_scaffolds <- function(paper) {
   result
 }
 
+parse_paper <- function(dirpath) {
+  paper <- load_paper(dirpath)
+  metadata <- list(
+    genes = parse_paper_genes(paper),
+    scaffolds = parse_paper_scaffolds(paper)
+  )
+  metadata
+}
+
+# Merge info from the paper with GenBank entries
 merge_metadata <- function(genbank_alleles, metadata) {
-  idx <- match(genbank_alleles$Gene, metadata$genes$Gene)
+  idx <- match(genbank_alleles$AlleleGene, metadata$genes$Gene)
   genbank_alleles$GeneCategory <- metadata$genes$Category[idx]
   genbank_alleles$GeneLocusGroup <- metadata$genes$LocusGroup[idx]
   idx <- match(genbank_alleles$GBFLen, metadata$scaffolds$Length)
   genbank_alleles$Scaffold <- metadata$scaffolds$Scaffold[idx]
   genbank_alleles$ScaffoldLocusGroup <- metadata$scaffolds$LocusGroup[idx]
+  genbank_alleles
+}
+
+# Condense multiple sources of info into one column each.
+# A number of things (constant region domain, locus, etc.) can be parsed out
+# from a few different places so this collapses them down to one column each.
+#
+# Just a placeholder until I switch over
+collapse_fields_old <- function(genbank_alleles) {
+  fields <- c(
+    "Gene", "Family", "Segment", "Locus",
+    "Class", "Subclass", "Region", "Domain")
+  sources <- c("Allele", "Product", "AccessionDescription")
+  genbank_alleles <- within(genbank_alleles, {
+    Gene <- AlleleGene
+    Family <- AlleleFamily
+    Segment <- AlleleSegment
+    Locus <- AlleleLocus
+  })
+  for (vecname in do.call(paste0, expand.grid(sources, fields))) {
+    genbank_alleles[[vecname]] <- NULL
+  }
+  genbank_alleles[, c("Accession","AccessionDescription","GBFLen","SeqGenomic","SeqCDS","SeqAA","Product","Allele","Gene","Family","Segment","Locus","AccessionDescriptionPartial","AccessionDescriptionFunctional","Dataset","GeneCategory","GeneLocusGroup","Scaffold","ScaffoldLocusGroup")]
+}
+
+# placeholder
+finalize_table <- function(genbank_alleles) {
   genbank_alleles
 }

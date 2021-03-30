@@ -17,7 +17,7 @@ def csv_to_fasta(fp_csv_in, fp_fasta_out, seqid_col, seq_col):
         for row in reader:
             if row[seqid_col] and row[seq_col]:
                 record = SeqRecord(Seq(row[seq_col]), id=row[seqid_col], description="")
-                SeqIO.write(record, f_out, "fasta")
+                SeqIO.write(record, f_out, "fasta-2line")
 
 if __name__ == "__main__":
     csv_to_fasta(*sys.argv[1:])

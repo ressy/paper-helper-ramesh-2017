@@ -1,3 +1,5 @@
+# TODO: include misc_feature notes!! They explain more.  For example, IGHE-P*01.
+
 # Parse antibody attributes from the Product column text.
 parse_fields_from_product <- function(txt) {
   # yes some of the GenBank records do have "lamba" in them.  I'm in no position
@@ -60,13 +62,44 @@ parse_fields_from_allele <- function(txt, prefix="Allele") {
   fields$Family <- sub("-.*$", "", fields$Gene)
   fields$Segment <- sub("^(IG[HLK].).*$", "\\1", fields$Family)
   fields$Locus <- substr(fields$Gene, 1, 3)
-  class_gene_lut <- c(IGHA="alpha", IGHD="delta", IGHE="epsilon", IGHG="gamma", IGHM="mu")
+  class_gene_lut <- c(
+    IGHA="alpha",
+    IGHD="delta",
+    IGHE="epsilon",
+    IGHEP="epsilon",
+    "IGHE-P"="epsilon",
+    IGHG="gamma",
+    IGHG1="gamma",
+    IGHG2="gamma",
+    IGHG3="gamma",
+    IGHG4="gamma",
+    IGHM="mu")
   subclass_gene_lut <- c(IGHG1=1, IGHG2=2, IGHG3=3, IGHG4=4)
   fields$Class <- class_gene_lut[fields$Gene]
   fields$Class[is.na(fields$Class)] <- ""
   fields$Subclass <- subclass_gene_lut[fields$Gene]
   fields$Subclass[is.na(fields$Subclass)] <- ""
+  region_segment_lut <- c(
+    IGHV = "variable",
+    IGKV = "variable",
+    IGLV = "variable",
+    IGHD = "diversity", # needs overriding below for one name clash
+    IGHJ = "joining",
+    IGKJ = "joining",
+    IGLJ = "joining",
+    IGHA = "constant",
+    IGHE = "constant",
+    IGHG = "constant",
+    IGHM = "constant",
+    IGKC = "constant",
+    IGLC = "constant")
+  fields$Region <- region_segment_lut[fields$Segment]
+  fields$Region[fields$Class != ""] <- "constant"
   fields$Domain <- gsub("^[^_]*_?", "", fields$Allele)
+  # I think Family and Segment might only be applicable for VDJ.
+  vdj <- c("variable", "diversity", "joining")
+  fields$Family[! fields$Region %in% vdj] <- ""
+  fields$Segment[! fields$Region %in% vdj] <- ""
   colnames(fields) <- paste0(prefix, colnames(fields))
   colnames(fields)[1] <- "Allele"
   fields
@@ -247,26 +280,68 @@ merge_metadata <- function(genbank_alleles, metadata) {
 # Condense multiple sources of info into one column each.
 # A number of things (constant region domain, locus, etc.) can be parsed out
 # from a few different places so this collapses them down to one column each.
-#
-# Just a placeholder until I switch over
-collapse_fields_old <- function(genbank_alleles) {
+collapse_fields <- function(genbank_alleles) {
   fields <- c(
     "Gene", "Family", "Segment", "Locus",
     "Class", "Subclass", "Region", "Domain")
   sources <- c("Allele", "Product", "AccessionDescription")
-  genbank_alleles <- within(genbank_alleles, {
-    Gene <- AlleleGene
-    Family <- AlleleFamily
-    Segment <- AlleleSegment
-    Locus <- AlleleLocus
-  })
-  for (vecname in do.call(paste0, expand.grid(sources, fields))) {
-    genbank_alleles[[vecname]] <- NULL
+  for (field in fields) {
+    columns <- paste0(sources, field)
+    columns <- columns[columns %in% colnames(genbank_alleles)]
+    genbank_alleles[[field]] <- apply(
+      genbank_alleles[, columns, drop=FALSE], 1, function(vec) {
+      vec <- unique(vec[vec != "" & ! is.na(vec)])
+      if (length(vec) == 0) {
+        ""
+      } else if (length(vec) == 1) {
+        vec
+      } else {
+        stop(paste0(
+          "Mismatch between data sources for ",
+          field,
+          ": ",
+          paste(vec, collapse="/")))
+      }
+    })
+    # remove the original separate columns
+    for (column in columns) {
+      genbank_alleles[[column]] <- NULL
+    }
   }
-  genbank_alleles[, c("Accession","AccessionDescription","GBFLen","SeqGenomic","SeqCDS","SeqAA","Product","Allele","Gene","Family","Segment","Locus","AccessionDescriptionPartial","AccessionDescriptionFunctional","Dataset","GeneCategory","GeneLocusGroup","Scaffold","ScaffoldLocusGroup")]
+  genbank_alleles
 }
 
-# placeholder
+# Order rows and columns consistently
 finalize_table <- function(genbank_alleles) {
+  columns <- c(
+    "Locus",    # IGH, IGK, or IGL
+    "Region",   # variable, diversity, joining, or constant
+    "Domain",   # for heavy constant region, if the sequence is only one domain
+    "Class",    # for heavy constant: alpha, delta, gamma, epsilon, or mu
+    "Subclass", # for heavy constant, like 1 for IGHG1
+    "Allele",   # Full sequence identifier
+    "Gene",     # Everything before the * from Allele
+    "Family",   # For VDJ sequences, IG[HKL][VDJ][0-9]P?
+    "Segment",  # For VDJ sequences, IG[HKL][VDJ]
+    "Accession",
+    "AccessionDescription",
+    "Product",
+    "AccessionDescriptionPartial",
+    "AccessionDescriptionFunctional",
+    "GBFLen",             # length of genomic seq for each full GenBank entry (across all regions)
+    "Dataset",            # WGS or Targeted
+    "GeneCategory",       # Functional, Non-functional, or ORF
+    "GeneLocusGroup",     # main or sister
+    "Scaffold",           # scaffold ID and size
+    "ScaffoldLocusGroup", # main, sister, or unknown
+    "SeqGenomic",         # Full genomic sequence with introns
+    "SeqCDS",             # Coding sequence
+    "SeqAA")              # Translation of coding sequence
+  if (! all(sort(columns) == sort(colnames(genbank_alleles)))) {
+    stop("unexpected columns")
+  }
+  # Order columns, and then order rows according to columns
+  genbank_alleles <- genbank_alleles[, columns]
+  genbank_alleles <- genbank_alleles[do.call(order, genbank_alleles), ]
   genbank_alleles
 }

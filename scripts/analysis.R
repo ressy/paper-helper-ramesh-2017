@@ -90,7 +90,7 @@ finalize_table <- function(genbank_alleles) {
     "Subclass", # for heavy constant, like 1 for IGHG1
     "Allele",   # Full sequence identifier
     "Gene",     # Everything before the * from Allele
-    "Family",   # For VDJ sequences, IG[HKL][VDJ][0-9]P?
+    "Family",   # For VDJ sequences, IG[HKL][VDJ][0-9]
     "Segment",  # For VDJ sequences, IG[HKL][VDJ]
     "Accession",
     "AccessionDescription",
@@ -152,7 +152,7 @@ parse_fields_from_allele <- function(txt, prefix="Allele") {
     Allele = txt,
     stringsAsFactors = FALSE)
   fields$Gene <- sub("\\*.*$", "", fields$Allele)
-  fields$Family <- sub("-.*$", "", fields$Gene)
+  fields$Family <- sub("P$", "", sub("-.*$", "", fields$Gene))
   fields$Segment <- sub("^(IG[HLK].).*$", "\\1", fields$Family)
   fields$Locus <- substr(fields$Gene, 1, 3)
   class_gene_lut <- c(

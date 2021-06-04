@@ -20,7 +20,10 @@ SHEETS_GIDS = {
     "fig6": "1329373153",
     "suppsheet1": "974273021",
     "suppsheet2": "1621508193",
-    "suppsheet3": "664446886"
+    "suppsheet3": "664446886",
+    "table1": "655585230",
+    "table3": "78785043",
+    "table4": "1988184408"
     }
 SHEETS = expand("from-paper/{sheet}.csv", sheet=SHEETS_GIDS.keys())
 

@@ -554,7 +554,7 @@ make_checks_comparison <- function(genbank_alleles) {
       Category = "Largest scaffold IGHC genes",
       Expected = 9,
       Observed = sum(Scaffold == "scaffold_297" & Locus == "IGH" & Region == "constant"),
-      Comments = 'Only 8 functional IGHC genes defined elsewhere; "Eight IGHC genes were identified including one IGHA gene and four IGHG genes. An additional pseudogene (IGHEP) was found on an unplaced scaffold." and "Macaques appear to have only eight IGHC genes"'),
+      Comments = '"Only 8 functional IGHC genes defined elsewhere; ""Eight IGHC genes were identified including one IGHA gene and four IGHG genes. An additional pseudogene (IGHEP) was found on an unplaced scaffold."" and ""Macaques appear to have only eight IGHC genes"""'),
     # A total of 178 IGHV genes (71 functional) belonging to 7 IGHV families
     # were identified across all scaffolds."
     data.frame(

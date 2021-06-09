@@ -90,6 +90,53 @@ finalize_table <- function(genbank_alleles) {
   genbank_alleles$Allele[genbank_alleles$Allele == "IGHE-P*01"] <- "IGHEP*01"
   genbank_alleles$Gene[genbank_alleles$Gene == "IGHE-P"] <- "IGHEP"
   
+  # Set up a per-every-allele category, defaulting to the associated
+  # GeneCategory if any.
+  genbank_alleles$Category <- genbank_alleles$GeneCategory
+  
+  # IGHV
+  # There are four ORF genes with five alleles in table 1 and five uncategorized
+  # IGHV entries across four genes with coding reigons defined, all in IGHV3.
+  genbank_alleles$Category[
+    with(genbank_alleles, Segment == "IGHV" & is.na(Category))] <- "ORF"
+
+  # IGKV
+  # There is exactly one ORF gene+allele from the Targeted dataset for IGKV1 in
+  # table 3 and one uncategorized IGKV1 left, and ditto for IGKV2, but with 2
+  # genes and 5 alleles.  That accounts for all uncategorized IGKV rows.
+  genbank_alleles$Category[
+    with(genbank_alleles, Segment == "IGKV" & is.na(Category))] <- "ORF"
+  
+  # IGLV
+  # The two IGLV7 ORF entries (table 4) are already labeled which just leaves
+  # the three IGLV8 for IGLV8-AEE.  That accounts for all uncategorized IGLV
+  # rows.
+  genbank_alleles$Category[
+    with(genbank_alleles, Segment == "IGLV" & is.na(Category))] <- "ORF"
+  
+  # Otherwise, label Non-functional if we can infer that from GenBank metadata,
+  # or Functional otherwise.
+  genbank_alleles$Category <- with(
+    genbank_alleles,
+    ifelse(
+      is.na(Category),
+      ifelse(
+        Functional == "F" | SeqAA == "" | MutatedRSS == "T",
+        "Non-functional",
+        "Functional"),
+      Category))
+  
+  # In IGHV we have two functional rows that I couldn't match to named scaffolds
+  # in the supplemental tables, for IGHV3-AFA and IGHV4-AGP.  If one of those is
+  # on the sister locus and one on an unknown locus then the checks should match
+  # up.  If IGHV4's is unknown that would match table 1 best which would imply
+  # sister locus for the IGHV3 one.
+  genbank_alleles$ScaffoldLocusGroup[with(genbank_alleles, Gene == "IGHV4-AGP" & is.na(ScaffoldLocusGroup))] <- "unknown"
+  genbank_alleles$ScaffoldLocusGroup[with(genbank_alleles, Gene == "IGHV3-AFA" & is.na(ScaffoldLocusGroup))] <- "sister"
+  # With that the only mismatch for IGHV functional genes in table 1 is the
+  # "1 (3)" in my IGHV3 row versus the paper's IGHV2 row, but I think that was a
+  # typo as it also clashes with figure 4.
+  
   columns <- c(
     "Locus",    # IGH, IGK, or IGL
     "Region",   # variable, diversity, joining, or constant
@@ -110,6 +157,7 @@ finalize_table <- function(genbank_alleles) {
     "GBFLen",             # length of genomic seq for each full GenBank entry (across all regions)
     "Dataset",            # WGS or Targeted
     "GeneCategory",       # Functional, Non-functional, or ORF
+    "Category",           # Inferred per-allele category
     "GeneLocusGroup",     # main or sister
     "Scaffold",           # scaffold ID and size
     "ScaffoldLocusGroup", # main, sister, or unknown
@@ -395,11 +443,11 @@ make_check_tables <- function(genbank_alleles) {
 make_v_table <- function(ramesh_for_segment) {
   output <- do.call(rbind, lapply(unique(ramesh_for_segment$Family), function(family) {
     ramesh_family <- subset(ramesh_for_segment, Family == family)
-    orig_genes <- unique(subset(ramesh_family, Dataset == "WGS" & GeneCategory == "Functional" & ! ScaffoldLocusGroup %in% c("", "unknown"))$Gene)
-    orig_genes_unknown <- unique(subset(ramesh_family, Dataset == "WGS" & GeneCategory == "Functional" & ScaffoldLocusGroup %in% c("", "unknown"))$Gene)
-    orig_orf <- unique(subset(ramesh_family, Dataset == "WGS" & GeneCategory %in% c("", "ORF") & SeqAA != "")$Gene)
-    extra_genes <- unique(subset(ramesh_family, Dataset == "Targeted" & GeneCategory == "Functional" & ! Gene %in% orig_genes & ! Gene %in% orig_genes_unknown)$Gene)
-    extra_orf <- unique(subset(ramesh_family, Dataset == "Targeted" & GeneCategory %in% c("", "ORF") & SeqAA != "" & ! Gene %in% orig_orf)$Gene)
+    orig_genes <- unique(subset(ramesh_family, Dataset == "WGS" & Category == "Functional" & ! ScaffoldLocusGroup %in% "unknown")$Gene)
+    orig_genes_unknown <- unique(subset(ramesh_family, Dataset == "WGS" & Category == "Functional" & ScaffoldLocusGroup %in% "unknown")$Gene)
+    orig_orf <- unique(subset(ramesh_family, Dataset == "WGS" & Category == "ORF" & SeqAA != "")$Gene)
+    extra_genes <- unique(subset(ramesh_family, Dataset == "Targeted" & Category == "Functional" & ! Gene %in% orig_genes & ! Gene %in% orig_genes_unknown)$Gene)
+    extra_orf <- unique(subset(ramesh_family, Dataset == "Targeted" & Category == "ORF" & SeqAA != "" & ! Gene %in% orig_orf)$Gene)
     full_alleles <- subset(ramesh_family, Gene %in% c(orig_genes, extra_genes))$Allele
     orf_alleles <- subset(ramesh_family, Gene %in% c(orig_orf, extra_orf))$Allele
     unknown_alleles <- subset(ramesh_family, Gene %in% orig_genes_unknown)$Allele
@@ -478,26 +526,35 @@ make_final_table4 <- function(table4) {
 make_checks_comparison <- function(genbank_alleles) {
   options(stringsAsFactors = FALSE)
   wgs <- subset(genbank_alleles, Dataset == "WGS")
+  targeted <- subset(genbank_alleles, Dataset == "Targeted")
+  
+  # a special case for two rows
+  known_loc_ighv_genes <- with(wgs, Gene[Segment == "IGHV" & Category == "Functional" & ! ScaffoldLocusGroup %in% "unknown"])
+  extra_ighv_genes <- unique(with(targeted, Gene[Segment == "IGHV" & Category == "Functional" & ! Gene %in% wgs$Gene]))
+  known_loc_ighv_genes <- c(known_loc_ighv_genes, extra_ighv_genes)
+  known_loc_ighv_alleles <- with(genbank_alleles, Allele[Gene %in% known_loc_ighv_genes])
+  
   wgs_checks <- with(wgs, do.call(rbind, lapply(list(
     # "IGH: 29 scaffolds were positive for IGH genes. The largest of these is
     # 1.4 Mb long and contains 55 IGHV genes and all 39 IGHD, all 9 IGHJ, and all
     # 9 IGHC genes.
     data.frame(
-      Category = "Largest Scaffold IGHV Gene Count",
+      Category = "Largest scaffold IGHV genes",
       Expected = 55,
       Observed = sum(Scaffold %in% "scaffold_297" & Segment %in% "IGHV")),
     data.frame(
-      Category = "Largest Scaffold IGHD Gene Count",
+      Category = "Largest scaffold IGHD genes",
       Expected = 39,
       Observed = sum(Scaffold %in% "scaffold_297" & Segment %in% "IGHD")),
     data.frame(
-      Category = "Largest Scaffold IGHJ Gene Count",
+      Category = "Largest scaffold IGHJ genes",
       Expected = 9,
       Observed = sum(Scaffold %in% "scaffold_297" & Segment %in% "IGHJ")),
     data.frame(
-      Category = "Largest Scaffold IGHC Gene Count",
+      Category = "Largest scaffold IGHC genes",
       Expected = 9,
-      Observed = sum(Scaffold == "scaffold_297" & Locus == "IGH" & Region == "constant")),
+      Observed = sum(Scaffold == "scaffold_297" & Locus == "IGH" & Region == "constant"),
+      Comments = 'Only 8 functional IGHC genes defined elsewhere; "Eight IGHC genes were identified including one IGHA gene and four IGHG genes. An additional pseudogene (IGHEP) was found on an unplaced scaffold." and "Macaques appear to have only eight IGHC genes"'),
     # A total of 178 IGHV genes (71 functional) belonging to 7 IGHV families
     # were identified across all scaffolds."
     data.frame(
@@ -507,7 +564,7 @@ make_checks_comparison <- function(genbank_alleles) {
     data.frame(
       Category = "Functional IGHV genes",
       Expected = 71,
-      Observed = sum(Segment == "IGHV" & GeneCategory %in% "Functional")),
+      Observed = sum(Segment == "IGHV" & Category %in% "Functional")),
     # IGK: Eight scaffolds were positive for IGK genes. The largest of these is
     # 744 kb long and contains 61 IGKV genes. A total of 119 IGKV (65 functional),
     # 5 IGKJ genes and 1 IGKC gene were identified.
@@ -516,7 +573,7 @@ make_checks_comparison <- function(genbank_alleles) {
       Expected = 8,
       Observed = length(unique(subset(wgs, Locus == "IGK")$Scaffold))),
     data.frame(
-      Category = "IGKV genes in largest scaffold",
+      Category = "Largest scaffold IGKV genes",
       Expected = 61,
       Observed = sum(Scaffold %in% "scaffold1|size744068" & Segment == "IGKV")),
     data.frame(
@@ -526,7 +583,7 @@ make_checks_comparison <- function(genbank_alleles) {
     data.frame(
       Category = "Functional IGKV genes",
       Expected = 65,
-      Observed = nrow(subset(wgs, Segment == "IGKV" & GeneCategory == "Functional"))),
+      Observed = nrow(subset(wgs, Segment == "IGKV" & Category == "Functional"))),
     data.frame(
       Category = "Total IGKJ genes",
       Expected = 5,
@@ -543,15 +600,15 @@ make_checks_comparison <- function(genbank_alleles) {
       Expected = 3,
       Observed = length(unique(subset(wgs, Locus == "IGL")$Scaffold))),
     data.frame(
-      Category = "IGLV genes in largest scaffold",
+      Category = "Largest scaffold IGLV genes",
       Expected = 54,
       Observed =  sum(Scaffold %in% "scaffold1|size815129" & Segment == "IGLV")),
     data.frame(
-      Category = "IGLJ genes in largest scaffold",
+      Category = "Largest scaffold IGLJ genes",
       Expected = 7,
       Observed = sum(Scaffold %in% "scaffold1|size815129" & Segment == "IGLJ")),
     data.frame(
-      Category = "IGLC genes in largest scaffold",
+      Category = "Largest scaffold IGLC genes",
       Expected = 7,
       Observed = sum(Scaffold %in% "scaffold1|size815129" & Locus == "IGL" & Region == "constant")),
     data.frame(
@@ -571,31 +628,31 @@ make_checks_comparison <- function(genbank_alleles) {
     data.frame(
       Category = "Functional IGLV genes",
       Expected = 46,
-      Observed = nrow(subset(wgs, Segment == "IGLV" & GeneCategory == "Functional"))),
+      Observed = nrow(subset(wgs, Segment == "IGLV" & Category == "Functional"))),
     data.frame(
       Category = "ORF IGLV genes",
       Expected = 1,
-      Observed = nrow(subset(wgs, Segment == "IGLV" & GeneCategory == "ORF"))),
+      Observed = nrow(subset(wgs, Segment == "IGLV" & Category == "ORF"))),
     data.frame(
       Category = "Non-functional IGLV genes",
       Expected = 58,
-      Observed = nrow(subset(wgs, Segment == "IGLV" & GeneCategory == "Non-functional"))),
+      Observed = nrow(subset(wgs, Segment == "IGLV" & Category == "Non-functional"))),
     # "IGHV: After ordering the scaffolds, we found that 44 functional IGHV genes
     # localized to the main locus, 20 functional genes to the sister locus, and 7
     # functional genes to scaffolds that could not be placed (Figure S1A and Table
     # S1A in Supplementary Material)."
     data.frame(
-      Category = "Main locus functional IGHV gene count",
+      Category = "Main locus functional IGHV genes",
       Expected = 44,
-      Observed = sum(ScaffoldLocusGroup %in% "main" & Segment %in% "IGHV" & GeneCategory %in% "Functional")),
+      Observed = sum(ScaffoldLocusGroup %in% "main" & Segment %in% "IGHV" & Category %in% "Functional")),
     data.frame(
-      Category = "Sister locus functional IGHV gene count",
+      Category = "Sister locus functional IGHV genes",
       Expected = 20,
-      Observed = sum(ScaffoldLocusGroup %in% "sister" & Segment %in% "IGHV" & GeneCategory %in% "Functional")),
+      Observed = sum(ScaffoldLocusGroup %in% "sister" & Segment %in% "IGHV" & Category %in% "Functional")),
     data.frame(
-      Category = "Unknown locus functional IGHV gene count",
+      Category = "Unknown locus functional IGHV genes",
       Expected = 7,
-      Observed = sum(ScaffoldLocusGroup %in% "unknown" & Segment %in% "IGHV" & GeneCategory %in% "Functional")),
+      Observed = sum(ScaffoldLocusGroup %in% "unknown" & Segment %in% "IGHV" & Category %in% "Functional")),
     # "IGHD, J, and C: All the IGHD, IGHJ, and IGHC genes were assembled onto one
     # scaffold, along with 55 functional IGHV genes. Thirty-nine functional IGHD
     # genes belonging to six families were identified— of these, ten formed five
@@ -608,25 +665,29 @@ make_checks_comparison <- function(genbank_alleles) {
     # including one IGHA gene and four IGHG genes. An additional pseudogene
     # (IGHEP) was found on an unplaced scaffold."
     data.frame(
-      Category = "All IGHD/IGHJ/IGHC on main scaffold",
-      Expected = TRUE,
-      Observed = all(subset(wgs, Locus == "IGH" & Region %in% c("diversity", "joining", "constant"))$Scaffold == "scaffold_297")),
+      Category = "IGHD/IGHJ/IGHC genes not on largest scaffold",
+      Expected = 0,
+      Observed = sum(
+        Locus == "IGH" &
+          Region %in% c("diversity", "joining", "constant") &
+          Gene != "IGHEP" &
+          ! Scaffold %in% "scaffold_297")),
     data.frame(
       Category = "Functional IGHD genes",
       Expected = 39,
-      Observed = sum(Segment == "IGHD" & GeneCategory %in% "Functional")),
+      Observed = sum(Segment == "IGHD" & Category %in% "Functional")),
     data.frame(
-      Category = "IGHD family count",
+      Category = "Total IGHD families",
       Expected = 6,
       Observed = length(unique(subset(wgs, Segment == "IGHD")$Family))),
     data.frame(
-      Category = "IGHJ Gene Count",
+      Category = "Total IGHJ genes",
       Expected = 9,
       Observed = sum(Segment == "IGHJ")),
     data.frame(
       Category = "Functional IGHJ genes",
       Expected = 6,
-      Observed = sum(Segment == "IGHJ" & GeneCategory %in% "Functional")),
+      Observed = sum(Segment == "IGHJ" & Category %in% "Functional")),
     data.frame(
       Category = "Total IGHC genes",
       Expected = 8,
@@ -641,7 +702,7 @@ make_checks_comparison <- function(genbank_alleles) {
       Expected = 4,
       Observed = sum(Locus == "IGH" & Region == "constant" & Domain == "" & grepl("IGHG", Gene))),
     data.frame(
-      Category = "One IGHEP gene on unplaced scaffold",
+      Category = "Unplaced scaffold IGHEP genes",
       Expected = 1,
       Observed = sum(Gene == "IGHEP" & ScaffoldLocusGroup %in% "unknown")),
     # "IGKV: A total of 119 IGKV genes (Table S2 in Supplementary Material)
@@ -652,34 +713,34 @@ make_checks_comparison <- function(genbank_alleles) {
     # (Table S2 in Supplementary Material).
     # (119 IGKV already handled above)
     data.frame(
-      Category = "IGKV family count",
+      Category = "IGKV families",
       Expected = 6,
       Observed = length(unique(subset(wgs, Segment == "IGKV")$Family))),
     data.frame(
-      Category = "Main locus IGKV functional gene count",
+      Category = "Main locus functional IGKV functional genes",
       Expected = 54,
-      Observed = sum(Segment == "IGKV" & GeneCategory == "Functional" & ScaffoldLocusGroup %in% "main")),
+      Observed = sum(Segment == "IGKV" & Category == "Functional" & ScaffoldLocusGroup %in% "main")),
     data.frame(
-      Category = "Main locus IGKV family count",
+      Category = "Main locus IGKV families",
       Expected = 6,
       Observed = length(unique(subset(wgs, Segment == "IGKV" & ScaffoldLocusGroup %in% "main")$Family))),
     data.frame(
-      Category = "Sister locus IGKV gene count",
+      Category = "Sister locus functional IGKV genes",
       Expected = 11,
-      Observed = sum(ScaffoldLocusGroup %in% "sister" & Segment == "IGKV" & GeneCategory %in% "Functional")),
+      Observed = sum(ScaffoldLocusGroup %in% "sister" & Segment == "IGKV" & Category %in% "Functional")),
     # "IGKJ, IGKC: The IGKJ cluster containing four functional genes and one NF
     # gene, and the single IGKC were assembled onto one scaffold, along with 10
     # IGKV genes."
     data.frame(
-      Category = "IGK main scaffold functional IGKJ genes",
+      Category = "IGKC-containing scaffold functional IGKJ genes",
       Expected = 4,
-      Observed = sum(Locus == "IGK" & Segment == "IGKJ" & Scaffold %in% "scaffold5|size145413" & GeneCategory %in% "Functional")),
+      Observed = sum(Locus == "IGK" & Segment == "IGKJ" & Scaffold %in% "scaffold5|size145413" & Category %in% "Functional")),
     data.frame(
-      Category = "IGK main scaffold non-functional IGKJ genes",
+      Category = "IGKC-containing scaffold non-functional IGKJ genes",
       Expected = 1,
-      Observed = sum(Segment == "IGKJ" & Scaffold %in% "scaffold5|size145413" & GeneCategory %in% "Non-functional")),
+      Observed = sum(Segment == "IGKJ" & Scaffold %in% "scaffold5|size145413" & Category %in% "Non-functional")),
     data.frame(
-      Category = "IGK main scaffold IGKV genes",
+      Category = "IGKC-containing scaffold IGKV genes",
       Expected = 10,
       Observed = sum(Segment == "IGKV" & Scaffold %in% "scaffold5|size145413")),
     # "IGLV: 105 IGLV genes (Table S3 in Supplementary Material) belonging to 11
@@ -689,17 +750,17 @@ make_checks_comparison <- function(genbank_alleles) {
     # functional."
     # (105 IGLV genes and 11 families handled above)
     data.frame(
-      Category = "IGLV functional gene family count",
+      Category = "IGLV functional families",
       Expected = 10,
-      Observed = length(unique(subset(wgs, Segment == "IGLV" & GeneCategory %in% "Functional")$Family))),
+      Observed = length(unique(subset(wgs, Segment == "IGLV" & Category %in% "Functional")$Family))),
     data.frame(
-      Category = "IGLV7 ORF gene count",
+      Category = "IGLV7 ORF genes",
       Expected = 1,
-      Observed = sum(Family == "IGLV7" & GeneCategory == "ORF")),
+      Observed = sum(Family == "IGLV7" & Category == "ORF")),
     data.frame(
-      Category = "IGLV9 family functional gene count",
+      Category = "IGLV9 family functional genes",
       Expected = 0,
-      Observed = sum(Family == "IGLV9" & GeneCategory %in% "Functional")),
+      Observed = sum(Family == "IGLV9" & Category %in% "Functional")),
     # "IGL-JC: Along with 54 IGLV genes, the IGL-JC cluster was assembled onto one
     # scaffold. Seven pairs of tandem IGLV and IGLC genes were identified. Five of
     # the JC genes were functional. Two of the IGLC genes were identical but were
@@ -709,13 +770,13 @@ make_checks_comparison <- function(genbank_alleles) {
       Expected = 1,
       Observed = length(unique(subset(wgs, Locus == "IGL" & Region %in% c("constant", "joining"))$Scaffold))),
     data.frame(
-      Category = "Functional IGLJ gene count",
+      Category = "Functional IGLJ genes",
       Expected = 5,
-      Observed = sum(Segment == "IGLJ" & GeneCategory %in% "Functional")),
+      Observed = sum(Segment == "IGLJ" & Category %in% "Functional")),
     data.frame(
-      Category = "Functional IGLC gene count",
+      Category = "Functional IGLC genes",
       Expected = 5,
-      Observed = sum(Locus == "IGL" & Region == "constant" & GeneCategory %in% "Functional"))),
+      Observed = sum(Locus == "IGL" & Region == "constant" & Category %in% "Functional"))),
     function(df) {
       if (! "Comments" %in% colnames(df)) {
         df$Comments <- ""
@@ -724,7 +785,6 @@ make_checks_comparison <- function(genbank_alleles) {
     })
   ))
   wgs_checks <- cbind(Dataset = "WGS", wgs_checks)
-  targeted <- subset(genbank_alleles, Dataset == "Targeted")
   other_checks <- with(targeted, do.call(rbind, lapply(list(
     # This text matches table 1 but both the text and table disagree with figure
     # 4:
@@ -749,17 +809,17 @@ make_checks_comparison <- function(genbank_alleles) {
       Dataset = "Both",
       Category = "Known-location functional IGHV genes",
       Expected = 72,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGHV" & GeneCategory == "Functional" & ! ScaffoldLocusGroup %in% "unknown")$Gene))),
+      Observed = length(known_loc_ighv_genes)),
     data.frame(
       Dataset = "Both",
       Category = "Known-location functional IGHV alleles",
       Expected = 186,
-      Observed = nrow(subset(genbank_alleles, Segment == "IGHV" & GeneCategory == "Functional" & ! ScaffoldLocusGroup %in% "unknown"))),
+      Observed = length(known_loc_ighv_alleles)),
     data.frame(
       Dataset = "Both",
       Category = "Known-location functional IGHV families",
       Expected = 7,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGHV" & GeneCategory == "Functional" & ! ScaffoldLocusGroup %in% "unknown")$Family))),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGHV" & Category == "Functional" & ! ScaffoldLocusGroup %in% "unknown")$Family))),
     # "IGHD: 198 Functional IGHD genes were found in the nine macaques,
     # including 47 unique functional IGHD genes. The IGHD allele library
     # contains the 39 functional genes found in the reference assembly plus 10
@@ -767,14 +827,14 @@ make_checks_comparison <- function(genbank_alleles) {
     # (Same situation as above for the 198 and 47; I can't check those.)
     data.frame(
       Dataset = "WGS",
-      Category = "IGHD gene count",
+      Category = "IGHD functional genes",
       Expected = 39,
-      Observed = nrow(subset(wgs, Segment == "IGHD" & GeneCategory == "Functional"))),
+      Observed = nrow(subset(wgs, Segment == "IGHD" & Category == "Functional"))),
     data.frame(
       Dataset = "Targeted",
-      Category = "IGHD allele count",
+      Category = "IGHD alleles",
       Expected = 10,
-      Observed = sum(Segment == "IGHD" & GeneCategory %in% "Functional")),
+      Observed = sum(Segment == "IGHD" & Category %in% "Functional")),
     # "IGHJ: 56 IGHJ genes were found in the nine macaques including 9 unique
     # IGHJ genes and 11 alleles. Two alleles were identified for the IGHJ1 and
     # IGHJ3P genes. No IGHJ genes were identified that were not found in the
@@ -788,7 +848,7 @@ make_checks_comparison <- function(genbank_alleles) {
     # indel."
     data.frame(
       Dataset = "Targeted",
-      Category = "IGHJ allele count",
+      Category = "IGHJ alleles",
       Expected = 2,
       Observed = sum(Segment == "IGHJ" & Dataset == "Targeted")),
     # "IGHC: Owing to low coverage, constant region genes were assembled into
@@ -809,24 +869,24 @@ make_checks_comparison <- function(genbank_alleles) {
     # identified (Table 3)."
     data.frame(
       Dataset = "Both",
-      Category = "Functional IGKV gene count",
+      Category = "Functional IGKV genes",
       Expected = 70,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGKV" & GeneCategory %in% "Functional")$Gene))),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGKV" & Category %in% "Functional")$Gene))),
     data.frame(
       Dataset = "Both",
-      Category = "Functional IGKV allele count",
+      Category = "Functional IGKV alleles",
       Expected = 214,
-      Observed = nrow(subset(genbank_alleles, Segment == "IGKV" & GeneCategory %in% "Functional"))),
+      Observed = nrow(subset(genbank_alleles, Segment == "IGKV" & Category %in% "Functional"))),
     data.frame(
       Dataset = "Both",
-      Category = "ORF IGKV gene count",
+      Category = "ORF IGKV genes",
       Expected = 3,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGKV" & GeneCategory %in% "ORF")$Gene))),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGKV" & Category %in% "ORF")$Gene))),
     data.frame(
       Dataset = "Both",
-      Category = "ORF IGKV allele count",
+      Category = "ORF IGKV alleles",
       Expected = 6,
-      Observed = nrow(subset(genbank_alleles, Segment == "IGKV" & GeneCategory %in% "ORF"))),
+      Observed = nrow(subset(genbank_alleles, Segment == "IGKV" & Category %in% "ORF"))),
     # "IGKJ: The IGKJ cluster was assembled into one contig each for each of the
     # nine macaques. Each such cluster contained four functional genes and one
     # pseudogene (IGKJ5), with similarity among alleles uniformly above 99%. The
@@ -838,12 +898,12 @@ make_checks_comparison <- function(genbank_alleles) {
     # are identical to that of the reference."
     data.frame(
       Dataset = "Both",
-      Category = "IGKC gene count",
+      Category = "IGKC genes",
       Expected = 1,
       Observed = length(unique(subset(genbank_alleles, Locus == "IGK" & Region == "constant")$Gene))),
     data.frame(
       Dataset = "Both",
-      Category = "IGKC allele count",
+      Category = "IGKC alleles",
       Expected = 6,
       Observed = nrow(subset(genbank_alleles, Locus == "IGK" & Region == "constant"))),
     # "IGLV: 291 genes were found, including 125 unique functional genes and 5
@@ -853,38 +913,38 @@ make_checks_comparison <- function(genbank_alleles) {
     # family."
     data.frame(
       Dataset = "Both",
-      Category = "Functional IGLV gene count",
+      Category = "Functional IGLV genes",
       Expected = 50,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGLV" & GeneCategory %in% "Functional")$Gene))),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGLV" & Category %in% "Functional")$Gene))),
     data.frame(
       Dataset = "Both",
-      Category = "Functional IGLV allele count",
+      Category = "Functional IGLV alleles",
       Expected = 137,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGLV" & GeneCategory %in% "Functional")$Allele)),
-      Comments = "Table 4 shows 140 functional alleles"),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGLV" & Category %in% "Functional")$Allele)),
+      Comments = "Figure 4 shows 140 functional alleles"),
     data.frame(
       Dataset = "Both",
-      Category = "ORF IGLV gene count",
+      Category = "ORF IGLV genes",
       Expected = 2,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGLV" & GeneCategory %in% "ORF")$Gene))),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGLV" & Category %in% "ORF")$Gene))),
     data.frame(
       Dataset = "Both",
-      Category = "ORF IGLV allele count",
+      Category = "ORF IGLV alleles",
       Expected = 5,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGLV" & GeneCategory %in% "ORF")$Allele))),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGLV" & Category %in% "ORF")$Allele))),
     # "IGLJ: 41 genes were found including 10 unique functional genes. IGL4 and
     # IGL5 had mutated recombination signal sequences and were NF. The IGLJ
     # allele library contains 7 IGLJ with 11 alleles."
     data.frame(
       Dataset = "Both",
-      Category = "Functional IGLJ gene count",
+      Category = "Total IGLJ genes",
       Expected = 7,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGLJ" & GeneCategory %in% "Functional")$Gene))),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGLJ")$Gene))),
     data.frame(
       Dataset = "Both",
-      Category = "Functional IGLJ allele count",
+      Category = "Total IGLJ alleles",
       Expected = 11,
-      Observed = length(unique(subset(genbank_alleles, Segment == "IGLJ" & GeneCategory %in% "Functional")$Allele))),
+      Observed = length(unique(subset(genbank_alleles, Segment == "IGLJ")$Allele))),
     # "IGLC: Very few IGLC genes were identified in M1–M9. 16 genes were found,
     # including 12 unique sequences. Of the 12 alleles identified, only 2
     # (IGLC2/IGLC3 and IGLC4P) of these were identical to the IGLC genes
@@ -892,14 +952,14 @@ make_checks_comparison <- function(genbank_alleles) {
     # consisted of 7 IGLJ genes (17 alleles)."
     data.frame(
       Dataset = "Both",
-      Category = "Functional IGLC gene count",
+      Category = "Total IGLC genes",
       Expected = 7,
-      Observed = length(unique(subset(genbank_alleles, Locus == "IGL" & Region == "constant" & GeneCategory %in% "Functional")$Gene))),
+      Observed = length(unique(subset(genbank_alleles, Locus == "IGL" & Region == "constant")$Gene))),
     data.frame(
       Dataset = "Both",
-      Category = "Functional IGLC allele count",
+      Category = "Total IGLC alleles",
       Expected = 17,
-      Observed = length(unique(subset(genbank_alleles, Locus == "IGL" & Region == "constant" & GeneCategory %in% "Functional")$Allele)))),
+      Observed = length(unique(subset(genbank_alleles, Locus == "IGL" & Region == "constant")$Allele)))),
     function(df) {
       if (! "Comments" %in% colnames(df)) {
         df$Comments <- ""

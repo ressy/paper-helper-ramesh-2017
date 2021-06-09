@@ -80,8 +80,16 @@ merge_metadata <- function(genbank_alleles, metadata) {
   genbank_alleles
 }
 
-# Order rows and columns consistently
+# Order rows and columns consistently and make some last adjustments
 finalize_table <- function(genbank_alleles) {
+  
+  # nearly all other pseudogenes don't get a hyphen
+  genbank_alleles$Allele[genbank_alleles$Allele == "IGKJ5-P*01"] <- "IGKJ5P*01"
+  genbank_alleles$Gene[genbank_alleles$Gene == "IGKJ5-P"] <- "IGKJ5P"
+  # also, elsewhere this same gene is referred to as IGHEP, not IGHE-P.
+  genbank_alleles$Allele[genbank_alleles$Allele == "IGHE-P*01"] <- "IGHEP*01"
+  genbank_alleles$Gene[genbank_alleles$Gene == "IGHE-P"] <- "IGHEP"
+  
   columns <- c(
     "Locus",    # IGH, IGK, or IGL
     "Region",   # variable, diversity, joining, or constant
@@ -623,7 +631,7 @@ make_checks_comparison <- function(genbank_alleles) {
       Category = "Total IGHC genes",
       Expected = 8,
       # leaving out the psueogene and the separate per-domain entries
-      Observed = sum(Locus == "IGH" & Region == "constant" & Domain == "" & Gene != "IGHE-P")),
+      Observed = sum(Locus == "IGH" & Region == "constant" & Domain == "" & Gene != "IGHEP")),
     data.frame(
       Category = "Total IGHA genes",
       Expected = 1,
@@ -633,9 +641,9 @@ make_checks_comparison <- function(genbank_alleles) {
       Expected = 4,
       Observed = sum(Locus == "IGH" & Region == "constant" & Domain == "" & grepl("IGHG", Gene))),
     data.frame(
-      Category = "One IGHE-P gene on unplaced scaffold",
+      Category = "One IGHEP gene on unplaced scaffold",
       Expected = 1,
-      Observed = sum(Gene == "IGHE-P" & ScaffoldLocusGroup %in% "unknown")),
+      Observed = sum(Gene == "IGHEP" & ScaffoldLocusGroup %in% "unknown")),
     # "IGKV: A total of 119 IGKV genes (Table S2 in Supplementary Material)
     # belonging to 6 IGKV families were identified on four scaffolds constituting
     # the main IGK locus and four contigs constituting the sister locus. We

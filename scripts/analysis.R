@@ -189,7 +189,7 @@ finalize_table <- function(genbank_alleles) {
     ifelse(
       is.na(Category),
       ifelse(
-        Functional == "F" | SeqAA == "" | MutatedRSS == "T",
+        Functional == "F" | SeqAA == "" | RSSUpstreamMutated == "T" | RSSDownstreamMutated == "T",
         "Non-functional",
         "Functional"),
       Category))
@@ -221,7 +221,6 @@ finalize_table <- function(genbank_alleles) {
     "MiscNotes",
     "Partial",
     "Functional",
-    "MutatedRSS",
     "GBFLen",               # length of genomic seq for each full GenBank entry (across all regions)
     "Dataset",              # WGS or Targeted
     "GeneCategory",         # Functional, Non-functional, or ORF
@@ -270,9 +269,7 @@ parse_fields_from_accession_description <- function(txt) {
 
 parse_fields_from_misc_notes <- function(txt) {
   fields <- parse_ig_desc(txt)
-  fields$MutatedRSS <- grepl("mutated recombination signal sequence", txt)
   fields$Functional <- ! grepl("nonfunctional.*due to mutation", txt)
-  fields$MutatedRSS[! fields$MutatedRSS] <- NA
   fields$Functional[fields$Functional] <- NA
   colnames(fields) <- paste0("MiscNotes", colnames(fields))
   fields
@@ -397,8 +394,9 @@ collapse_fields <- function(genbank_alleles) {
   }
   
   # logicals
-  fields <- c("Functional", "MutatedRSS", "Partial")
-  sources <- c("AccessionDescription", "MiscNotes")
+  fields <- c("Functional", "Partial",
+              "RSSUpstreamMutated", "CDSMutated", "RSSDownstreamMutated")
+  sources <- c("AccessionDescription", "MiscNotes", "")
   for (field in fields) {
     columns <- paste0(sources, field)
     columns <- columns[columns %in% colnames(genbank_alleles)]
@@ -421,7 +419,9 @@ collapse_fields <- function(genbank_alleles) {
       })
     # remove the original separate columns
     for (column in columns) {
-      genbank_alleles[[column]] <- NULL
+      if (! column %in% fields) {
+        genbank_alleles[[column]] <- NULL
+      }
     }
   }
   

@@ -16,25 +16,94 @@ parse_genbank_entries <- function(genbank) {
       feature_type == "gene",
       select = c(feature_qualifier_gene, gbf_id, gbf_description, gbf_seqlen, feature_seq))
     colnames(chunk_out) <- c("AlleleOrig", "Accession", "AccessionDescription", "GBFLen", "SeqGenomic")
+
+    # Then parse all the other rows.
+    extras <- subset(chunk, ! feature_type %in% c("gene"))
+    bits <- with(extras, do.call(paste0, list(
+      0 + (feature_type == "CDS"),
+      0 + (feature_type == "misc_recomb"),
+      0 + (feature_type == "misc_feature"),
+      0 + (feature_qualifier_note == "recombination signal sequence"),
+      0 + (feature_qualifier_note == "mutated recombination signal sequence"),
+      0 + (grepl("^nonfunctional immunoglobulin", feature_qualifier_note)))))
+    extras$feature_category <- factor(
+      bits,
+      levels = c("010100", "001010", "001001", "100000"),
+      labels = c("RSS", "RSS", "CDS", "CDS"))
+    extras$feature_mutated <- c("010100"=FALSE, "001010"=TRUE, "001001"=TRUE, "100000"=FALSE)[bits]
+    
+    if (any(is.na(extras$feature_category))) {
+      stop(paste("unrecognized GBF features for", chunk_out$AlleleOrig))
+    }
+    
+    if (sum(extras$feature_category == "RSS") > 2) {
+      stop(paste("> 2 RSS entries for", chunk_out$AlleleOrig))
+    }
+    if (sum(extras$feature_category == "CDS") > 1) {
+      stop(paste("> 1 CDS entries for", chunk_out$AlleleOrig))
+    }
+    if (nrow(extras) > 0) {
+      # assume order based on row order, but flip first if we're on the other
+      # strand
+      strand = unique(chunk$feature_strand)
+      if (length(strand) > 1) {
+        stop(paste("inconsistent strand for", chunk_out$AlleleOrig))
+      }
+      if (strand == -1) {
+        extras <- extras[seq(nrow(extras), 1, -1), ]
+      }
+    }
+      
+    extras$feature_category_final <- as.character(extras$feature_category)
+    idx <- 1:nrow(extras)
+    idx_cds <- match("CDS", extras$feature_category)
+    extras$feature_category_final[extras$feature_category == "RSS" & idx < idx_cds] <- "RSSUpstream"
+    extras$feature_category_final[extras$feature_category == "RSS" & idx > idx_cds] <- "RSSDownstream"
+    extras$feature_category_final <- factor(
+      extras$feature_category_final,
+      levels = c("RSSUpstream", "CDS", "RSSDownstream"))
+
     # Add separate sequence columns for CDS and translation, if present.
-    cds <- subset(chunk, feature_type == "CDS")
+    cds <- subset(extras, feature_category_final == "CDS")
     if (nrow(cds) == 0) {
       seq_cds <- ""
       seq_aa <- ""
       product <- ""
-    } else if (nrow(cds) == 1) {
+      cds_mut <- NA
+    } else {
       seq_cds <- cds$feature_seq
       seq_aa <- cds$feature_qualifier_translation
       product <- cds$feature_qualifier_product
-    } else {
-      stop("multiple CDSs?")
+      cds_mut <- cds$feature_mutated
     }
+    rss1 <- subset(extras, feature_category_final == "RSSUpstream")
+    if (nrow(rss1) == 0) {
+      seq_rss1 <- ""
+      rss1_mut <- NA
+    } else {
+      seq_rss1 <- rss1$feature_seq
+      rss1_mut <- rss1$feature_mutated
+    }
+    rss2 <- subset(extras, feature_category_final == "RSSDownstream")
+    if (nrow(rss2) == 0) {
+      seq_rss2 <- ""
+      rss2_mut <- NA
+    } else {
+      seq_rss2 <- rss2$feature_seq
+      rss2_mut <- rss2$feature_mutated
+    }
+    
     misc_notes <- sort(subset(chunk, feature_type == "misc_feature")$feature_qualifier_note)
     misc_notes <- paste(misc_notes, collapse="; ")
     chunk_out$MiscNotes <- misc_notes
+    chunk_out$RSSUpstream <- seq_rss1
     chunk_out$SeqCDS <- seq_cds
+    chunk_out$RSSDownstream <- seq_rss2
     chunk_out$SeqAA <- seq_aa
     chunk_out$Product <- product
+    chunk_out$RSSUpstreamMutated <- rss1_mut
+    chunk_out$RSSDownstreamMutated <- rss2_mut
+    chunk_out$CDSMutated <- cds_mut
     chunk_out
   }))
   
@@ -67,7 +136,6 @@ parse_genbank_entries <- function(genbank) {
   genes <- genes[with(genes, order(Accession, Allele)), ]
   genes
 }
-
 
 # Merge info from the paper with GenBank entries
 merge_metadata <- function(genbank_alleles, metadata) {
@@ -154,19 +222,27 @@ finalize_table <- function(genbank_alleles) {
     "Partial",
     "Functional",
     "MutatedRSS",
-    "GBFLen",             # length of genomic seq for each full GenBank entry (across all regions)
-    "Dataset",            # WGS or Targeted
-    "GeneCategory",       # Functional, Non-functional, or ORF
-    "Category",           # Inferred per-allele category
-    "GeneLocusGroup",     # main or sister
-    "Scaffold",           # scaffold ID and size
-    "ScaffoldLocusGroup", # main, sister, or unknown
-    "SeqGenomic",         # Full genomic sequence with introns
-    "SeqCDS",             # Coding sequence
-    "SeqAA")              # Translation of coding sequence
-  #if (! all(sort(columns) == sort(colnames(genbank_alleles)))) {
+    "GBFLen",               # length of genomic seq for each full GenBank entry (across all regions)
+    "Dataset",              # WGS or Targeted
+    "GeneCategory",         # Functional, Non-functional, or ORF
+    "Category",             # Inferred per-allele category
+    "GeneLocusGroup",       # main or sister
+    "Scaffold",             # scaffold ID and size
+    "ScaffoldLocusGroup",   # main, sister, or unknown
+    "SeqGenomic",           # Full genomic sequence with introns
+    "RSSUpstream",          # RSS at 5' end, if relevant and if detected
+    "SeqCDS",               # Coding sequence
+    "RSSDownstream",        # RSS at 3' end, if relevant and if detected
+    "RSSUpstreamMutated",   # Is RSSUpstream mutated?
+    "CDSMutated",           # Is SeqCDS mutated?
+    "RSSDownstreamMutated", # Is RSSDownstream mutated
+    "SeqAA")                # Translation of coding sequence
   if (paste(sort(columns), collapse="/") != paste(sort(colnames(genbank_alleles)), collapse="/")) {
-    stop("unexpected columns")
+    stop(paste0(
+      "unexpected columns.\nexpected: ",
+      paste(sort(columns), collapse="/"),
+      "\nobserved: ",
+      paste(sort(colnames(genbank_alleles)), collapse="/")))
   }
   # Order columns, and then order rows according to columns
   genbank_alleles <- genbank_alleles[, columns]

@@ -165,22 +165,25 @@ finalize_table <- function(genbank_alleles) {
   # IGHV
   # There are four ORF genes with five alleles in table 1 and five uncategorized
   # IGHV entries across four genes with coding reigons defined, all in IGHV3.
-  genbank_alleles$Category[
-    with(genbank_alleles, Segment == "IGHV" & is.na(Category))] <- "ORF"
+  genbank_alleles$Category[with(
+    genbank_alleles,
+    Segment == "IGHV" & is.na(Category) & SeqAA != "")] <- "ORF"
 
   # IGKV
   # There is exactly one ORF gene+allele from the Targeted dataset for IGKV1 in
   # table 3 and one uncategorized IGKV1 left, and ditto for IGKV2, but with 2
   # genes and 5 alleles.  That accounts for all uncategorized IGKV rows.
-  genbank_alleles$Category[
-    with(genbank_alleles, Segment == "IGKV" & is.na(Category))] <- "ORF"
+  genbank_alleles$Category[with(
+    genbank_alleles,
+    Segment == "IGKV" & is.na(Category) & SeqAA != "")] <- "ORF"
   
   # IGLV
   # The two IGLV7 ORF entries (table 4) are already labeled which just leaves
   # the three IGLV8 for IGLV8-AEE.  That accounts for all uncategorized IGLV
   # rows.
-  genbank_alleles$Category[
-    with(genbank_alleles, Segment == "IGLV" & is.na(Category))] <- "ORF"
+  genbank_alleles$Category[with(
+    genbank_alleles,
+    Segment == "IGLV" & is.na(Category) & SeqAA != "")] <- "ORF"
   
   # Otherwise, label Non-functional if we can infer that from GenBank metadata,
   # or Functional otherwise.
@@ -521,9 +524,9 @@ make_v_table <- function(ramesh_for_segment) {
     ramesh_family <- subset(ramesh_for_segment, Family == family)
     orig_genes <- unique(subset(ramesh_family, Dataset == "WGS" & Category == "Functional" & ! ScaffoldLocusGroup %in% "unknown")$Gene)
     orig_genes_unknown <- unique(subset(ramesh_family, Dataset == "WGS" & Category == "Functional" & ScaffoldLocusGroup %in% "unknown")$Gene)
-    orig_orf <- unique(subset(ramesh_family, Dataset == "WGS" & Category == "ORF" & SeqAA != "")$Gene)
+    orig_orf <- unique(subset(ramesh_family, Dataset == "WGS" & Category == "ORF")$Gene)
     extra_genes <- unique(subset(ramesh_family, Dataset == "Targeted" & Category == "Functional" & ! Gene %in% orig_genes & ! Gene %in% orig_genes_unknown)$Gene)
-    extra_orf <- unique(subset(ramesh_family, Dataset == "Targeted" & Category == "ORF" & SeqAA != "" & ! Gene %in% orig_orf)$Gene)
+    extra_orf <- unique(subset(ramesh_family, Dataset == "Targeted" & Category == "ORF" & ! Gene %in% orig_orf)$Gene)
     full_alleles <- subset(ramesh_family, Gene %in% c(orig_genes, extra_genes))$Allele
     orf_alleles <- subset(ramesh_family, Gene %in% c(orig_orf, extra_orf))$Allele
     unknown_alleles <- subset(ramesh_family, Gene %in% orig_genes_unknown)$Allele

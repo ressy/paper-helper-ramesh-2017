@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
-Convert GBF features to FASTA or CSV.
+Convert GBF features to CSV.
 
 Note that this is not the same as just using the SeqRecord provided by SeqIO's
 GenBank parser.  That produces one big sequence for the whole record.  Instead
-this writes each feature as a separate FASTA entry or CSV row.
+this writes each feature as a separate CSV row.
 """
 
 import sys
@@ -14,6 +14,7 @@ from Bio import SeqIO
 from Bio.SeqFeature import BeforePosition, AfterPosition, ExactPosition
 
 def get_gbf_attrs(gbf):
+    """Extract attributes of an entire GBF record."""
     attrs = {}
     attrs.update(gbf.annotations)
     del attrs["structured_comment"]
@@ -30,6 +31,7 @@ def get_gbf_attrs(gbf):
     return attrs
 
 def get_feature_attrs(feature, gbf):
+    """Extract attributes for one GBF feature."""
     # lookup table mapping the feature start/end position class to a
     # one-character label.  (We'll get a KeyError if the location objects
     # aren't instances of one of these handled cases but these should account
@@ -58,6 +60,7 @@ def get_feature_attrs(feature, gbf):
     return feature_pairs
 
 def read_gbf_as_table(fp_in):
+    """Convert a GBF into a list of dictionaries, one per feature."""
     rows = []
     with open(fp_in) as f_in:
         for gbf in SeqIO.parse(f_in, "gb"):
@@ -72,7 +75,8 @@ def read_gbf_as_table(fp_in):
                 if feature.type == "source":
                     del feature_pairs["feature_seq"]
                     del feature_pairs["feature_type"]
-                    feature_src_attrs = {k.replace("feature", "feature_source"): v for k, v in feature_pairs.items()}
+                    feature_src_attrs = {
+                        k.replace("feature", "feature_source"): v for k, v in feature_pairs.items()}
                 else:
                     row = feature_src_attrs.copy()
                     row.update(feature_pairs)
@@ -81,6 +85,7 @@ def read_gbf_as_table(fp_in):
     return rows
 
 def convert_gbf(fp_in, fp_out):
+    """Convert a GBF file to CSV, with one row per feature."""
     rows = read_gbf_as_table(fp_in)
     with open(fp_out, "wt") as f_out:
         fieldnames = [row.keys() for row in rows]

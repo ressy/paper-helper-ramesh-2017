@@ -11,10 +11,9 @@ import sys
 import re
 import csv
 import itertools
-from Bio import GenBank
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
-from Bio.Seq import Seq
+from Bio.SeqFeature import BeforePosition, AfterPosition, ExactPosition
 
 def get_gbf_attrs(gbf):
     attrs = {}
@@ -33,18 +32,31 @@ def get_gbf_attrs(gbf):
     return attrs
 
 def get_feature_attrs(feature, gbf):
+    # lookup table mapping the feature start/end position class to a
+    # one-character label.  (We'll get a KeyError if the location objects
+    # aren't instances of one of these handled cases but these should account
+    # for everything we'll see here, I think.)
+    location_lut = {
+        ExactPosition: "=",
+        BeforePosition: "<",
+        AfterPosition: ">"}
     feature_pairs = {
         "id": feature.id,
         "ref": feature.ref,
         "ref_db": feature.ref_db,
         "strand": feature.strand,
         "type": feature.type,
+        "pos_start": feature.location.start.position + 1,
+        "pos_end": feature.location.end.position,
+        "pos_start_type": location_lut[type(feature.location.start)],
+        "pos_end_type": location_lut[type(feature.location.end)],
+        "pos_strand": feature.location.strand,
         "seq": feature.extract(gbf.seq)}
     for key in feature.qualifiers:
         feature_pairs["qualifier_" + key] = ";".join(feature.qualifiers[key])
     if feature_pairs["id"] == "<unknown id>":
         feature_pairs["id"] = None
-    feature_pairs = {key: val for key, val in feature_pairs.items() if val}
+    feature_pairs = {key: val for key, val in feature_pairs.items() if val is not None}
     return feature_pairs
 
 def encode_seq_desc(attrs):

@@ -8,11 +8,9 @@ this writes each feature as a separate FASTA entry or CSV row.
 """
 
 import sys
-import re
 import csv
 import itertools
 from Bio import SeqIO
-from Bio.SeqRecord import SeqRecord
 from Bio.SeqFeature import BeforePosition, AfterPosition, ExactPosition
 
 def get_gbf_attrs(gbf):
@@ -59,18 +57,6 @@ def get_feature_attrs(feature, gbf):
     feature_pairs = {key: val for key, val in feature_pairs.items() if val is not None}
     return feature_pairs
 
-def encode_seq_desc(attrs):
-    slug = lambda txt: re.sub(r"\s", "_", str(txt))
-    return " ".join(["%s=%s" % (key, slug(val)) for key, val in attrs.items()])
-
-def make_seqid_by_gene(attrs, tally={"seq": 0}):
-    if attrs.get("feature_type") == "gene" and "feature_qualifier_gene" in attrs:
-        seqid = attrs["feature_qualifier_gene"]
-    else:
-        seqid = "seq" + str(tally["seq"])
-        tally["seq"] += 1
-    return seqid
-
 def read_gbf_as_table(fp_in):
     rows = []
     with open(fp_in) as f_in:
@@ -94,30 +80,18 @@ def read_gbf_as_table(fp_in):
                     rows.append(row)
     return rows
 
-
-def convert_gbf(fp_in, fp_out, fmt):
+def convert_gbf(fp_in, fp_out):
     rows = read_gbf_as_table(fp_in)
-    if fmt == "fasta":
-        with open(fp_out, "wt") as f_out:
-            for row in rows:
-                seq = row["feature_seq"]
-                del row["feature_seq"]
-                desc = encode_seq_desc(row)
-                seqid = make_seqid_by_gene(rows)
-                record = SeqRecord(
-                    seq=seq, id=seqid, description=desc)
-                SeqIO.write(record, f_out, "fasta")
-    elif fmt == "csv":
-        with open(fp_out, "wt") as f_out:
-            fieldnames = [row.keys() for row in rows]
-            fieldnames = sorted(list(set(itertools.chain(*fieldnames))))
-            writer = csv.DictWriter(f_out, fieldnames=fieldnames, lineterminator="\n")
-            writer.writeheader()
-            for row in rows:
-                for key in fieldnames:
-                    if key not in row:
-                        row[key] = ""
-                writer.writerow(row)
+    with open(fp_out, "wt") as f_out:
+        fieldnames = [row.keys() for row in rows]
+        fieldnames = sorted(list(set(itertools.chain(*fieldnames))))
+        writer = csv.DictWriter(f_out, fieldnames=fieldnames, lineterminator="\n")
+        writer.writeheader()
+        for row in rows:
+            for key in fieldnames:
+                if key not in row:
+                    row[key] = ""
+            writer.writerow(row)
 
 if __name__ == "__main__":
-    convert_gbf(*sys.argv[1:])
+    convert_gbf(sys.argv[1], sys.argv[2])

@@ -6,8 +6,6 @@ with open("from-paper/accessions.txt") as f_in:
     ACCESSIONS = [line.strip() for line in f_in]
 
 GBF = expand("from-genbank/{acc}.gbf", acc=ACCESSIONS)
-FASTA = expand("from-genbank/{acc}.fasta", acc=ACCESSIONS)
-GBFFASTA = expand("converted/{acc}.gbf.fasta", acc=ACCESSIONS)
 GBFCSV = expand("converted/{acc}.gbf.csv", acc=ACCESSIONS)
 
 SHEETS_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQC9Yh2l3ktopxK0idgGlSaOeo2Chnq15EoVro3wsmKHowVP1uVydyVJ_asCQe9Sfwot7_PcTNzaKGa/pub"
@@ -60,14 +58,8 @@ rule convert_gbf_csv_combined:
 rule all_gbf_csv:
     input: GBFCSV
 
-rule all_gbf_fasta:
-    input: GBFFASTA
-
 rule all_download_gbf:
     input: GBF
-
-rule all_download_fasta:
-    input: FASTA
 
 rule all_sheets:
     input: SHEETS
@@ -76,13 +68,7 @@ rule convert_gbf_csv:
     """Convert a GBF file into a CSV with one row per feature."""
     output: "converted/{acc}.gbf.csv"
     input: "from-genbank/{acc}.gbf"
-    shell: "python scripts/convert_gbf.py {input} {output} csv"
-
-rule convert_gbf_fasta:
-    """Convert a GBF file into a FASTA with one sequence per feature."""
-    output: "converted/{acc}.gbf.fasta"
-    input: "from-genbank/{acc}.gbf"
-    shell: "python scripts/convert_gbf.py {input} /dev/stdout fasta | seqtk seq -l 0 > {output}"
+    shell: "python scripts/convert_gbf.py {input} {output}"
 
 rule download_gbf:
     """Download one GBF text file per GenBank accession.
@@ -92,16 +78,6 @@ rule download_gbf:
     """
     output: "from-genbank/{acc}.gbf"
     shell: "python scripts/download_genbank.py {wildcards.acc} gb > {output}"
-
-rule download_fasta:
-    """Download one FASTA per GenBank accession.
-
-    Not actively using this since what I really want is to slice up each
-    accession into one sequence per feature, to get at the individual
-    genes/alleles.
-    """
-    output: "from-genbank/{acc}.fasta"
-    shell: "python scripts/download_genbank.py {wildcards.acc} fasta > {output}"
 
 rule download_sheet:
     output: "from-paper/{sheet}.csv"
